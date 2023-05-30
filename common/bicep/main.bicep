@@ -113,7 +113,7 @@ resource virtualNetworkDiagnosticSettings 'Microsoft.Insights/diagnosticSettings
   name: 'enable-all'
   scope: virtualNetwork
   properties: {
-    workspaceId: virtualNetwork.id
+    workspaceId: logAnalyticsWorkspace.id
     logAnalyticsDestinationType: 'Dedicated'
     metrics: [
       {
@@ -145,23 +145,34 @@ resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview
   }
 }
 
-resource serviceBusNamespacePrivateEndpoint 'Microsoft.Network/privateEndpoints@2022-11-01' = {
-  name: '${serviceBusNamespace.name}-pep'
-  tags: tags
-  location: location
+resource serviceBusNamespaceDiagnosticSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'enable-all'
+  scope: serviceBusNamespace
   properties: {
-    subnet: {
-      id: privateLinkSubnet.id
-    }
-    privateLinkServiceConnections: [
+    workspaceId: logAnalyticsWorkspace.id
+    logAnalyticsDestinationType: 'Dedicated'
+    logs: [
       {
-        name: serviceBusNamespace.name
-        properties: {
-          privateLinkServiceId: serviceBusNamespace.id
-          groupIds: [
-            'namespace'
-          ]
-        }
+        category: 'OperationalLogs'
+        enabled: true
+      }
+      {
+        category: 'VNetAndIPFilteringLogs'
+        enabled: true
+      }
+      {
+        category: 'RuntimeAuditLogs'
+        enabled: true
+      }
+      {
+        category: 'ApplicationMetricsLogs'
+        enabled: true
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: true
       }
     ]
   }
