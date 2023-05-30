@@ -89,7 +89,7 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2022-11-01' = {
     addressSpace: {
       addressPrefixes: [
         '10.0.0.0/23'
-        '10.0.1.0/23'
+        '10.0.2.0/24'
       ]
     }
     subnets: [
@@ -102,7 +102,7 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2022-11-01' = {
       {
         name: privateLinkSubnetName
         properties: {
-          addressPrefix: '10.0.1.0/28'
+          addressPrefix: '10.0.2.0/28'
         }
       }
     ]
