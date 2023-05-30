@@ -2,6 +2,14 @@ name: Deploy common Azure resources
 
 on:
   workflow_dispatch:
+    inputs:
+      environment:
+        description: Release environment
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
 
 permissions:
   contents: read
@@ -11,6 +19,7 @@ jobs:
   deploy_azure_resources:
     name: Deploy Azure resources
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
