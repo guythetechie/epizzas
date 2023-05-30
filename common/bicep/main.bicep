@@ -7,6 +7,7 @@ param containerAppSubnetName string
 param privateLinkSubnetName string
 param eventGridNamespaceName string
 param eventGridNamespaceLocation string = 'eastus'
+param cosmosAccountName string
 
 resource ampls 'Microsoft.Insights/privateLinkScopes@2021-07-01-preview' = {
   name: 'ampls'
@@ -27,7 +28,7 @@ resource amplsPrivateEndpoint 'Microsoft.Network/privateEndpoints@2022-11-01' = 
   properties: {
     subnet: {
       id: privateLinkSubnet.id
-    }
+    }    
     privateLinkServiceConnections: [
       {
         name: ampls.name
@@ -102,7 +103,7 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2022-11-01' = {
       {
         name: privateLinkSubnetName
         properties: {
-          addressPrefix: '10.0.2.0/28'
+          addressPrefix: '10.0.2.0/26'
         }
       }
     ]
@@ -117,7 +118,7 @@ resource virtualNetworkDiagnosticSettings 'Microsoft.Insights/diagnosticSettings
     logAnalyticsDestinationType: 'Dedicated'
     metrics: [
       {
-        category: 'Transaction'
+        category: 'AllMetrics'
         enabled: true
       }
     ]
@@ -147,5 +148,64 @@ resource eventGridNamespace 'Microsoft.EventGrid/namespaces@2023-06-01-preview' 
   properties: {
     isZoneRedundant: true
     publicNetworkAccess: 'Enabled'
+  }
+}
+
+resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2023-04-15' = {
+  name: cosmosAccountName
+  location: location
+  tags: tags
+  properties: {
+    databaseAccountOfferType: 'Standard'
+    locations: [
+      {
+        locationName: location
+      }
+    ]
+    capabilities: [
+      {
+        name: 'EnableServerless'
+      }
+    ]
+    backupPolicy: {
+      type: 'Continuous'
+    }
+  }
+}
+
+resource cosmosAccountDiagnosticSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'enable-all'
+  scope: cosmosAccount
+  properties: {
+    workspaceId: logAnalyticsWorkspace.id
+    logAnalyticsDestinationType: 'Dedicated'
+    logs: [
+      {
+        category: 'DataPlaneRequests'
+        enabled: true
+      }
+      {
+        category: 'QueryRuntimeStatistics'
+        enabled: true
+      }
+      {
+        category: 'PartitionKeyStatistics'
+        enabled: true
+      }
+      {
+        category: 'PartitionKeyRUConsumption'
+        enabled: true
+      }
+      {
+        category: 'ControlPlaneRequests'
+        enabled: true
+      }
+    ]
+    metrics: [
+      {
+        category: 'Requests'
+        enabled: true
+      }
+    ]
   }
 }

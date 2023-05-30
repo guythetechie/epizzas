@@ -52,6 +52,7 @@ jobs:
                 privateLinkSubnetName = "${{ vars.AZURE_PRIVATE_LINK_SUBNET_NAME }}"
                 eventGridNamespaceName = "${{ vars.AZURE_EVENT_GRID_NAMESPACE_NAME }}"
                 eventGridNamespaceLocation = "${{ vars.AZURE_EVENT_GRID_NAMESPACE_LOCATION }}"
+                cosmosAccountName = "${{ vars.AZURE_COSMOS_ACCOUNT_NAME }}"
               }
             }
             New-AzResourceGroupDeployment @deploymentParameters
