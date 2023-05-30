@@ -20,17 +20,17 @@ jobs:
         with:
           dotnet-version: 8.x
           
-      # - name: Run tests
-      #   shell: pwsh
-      #   run: |
-      #     Set-StrictMode -Version Latest
-      #     $ErrorActionPreference = "Stop"
-      #     $VerbosePreference = "Continue"
-      #     $InformationPreference = "Continue"
+      - name: Run tests
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = "Stop"
+          $VerbosePreference = "Continue"
+          $InformationPreference = "Continue"
           
-      #     $testProjectPath = Join-Path "${{ github.workspace }}" "common" "code" "EPizzas.Common.Tests" "EPizzas.Common.Tests.csproj"
-      #     & dotnet test "$testProjectPath" --logger "console;verbosity=detailed"
-      #     if ($LASTEXITCODE -ne 0) { throw "Running test failed."}
+          $testProjectPath = Join-Path "${{ github.workspace }}" "common" "code" "EPizzas.Common.Tests" "EPizzas.Common.Tests.csproj"
+          & dotnet test "$testProjectPath" --logger "console;verbosity=detailed"
+          if ($LASTEXITCODE -ne 0) { throw "Running test failed."}
           
       - name: Publish package
         shell: pwsh
