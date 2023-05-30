@@ -5,7 +5,7 @@ on:
     
 jobs:
   publish_package:
-    name: PUblish package
+    name: Publish package
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
