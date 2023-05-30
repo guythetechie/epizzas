@@ -50,8 +50,7 @@ jobs:
                 virtualNetworkName = "${{ vars.AZURE_VIRTUAL_NETWORK_NAME }}"
                 containerAppSubnetName = "${{ vars.AZURE_CONTAINER_APPS_SUBNET_NAME }}"
                 privateLinkSubnetName = "${{ vars.AZURE_PRIVATE_LINK_SUBNET_NAME }}"
-                eventGridNamespaceName = "${{ vars.AZURE_EVENT_GRID_NAMESPACE_NAME }}"
-                eventGridNamespaceLocation = "${{ vars.AZURE_EVENT_GRID_NAMESPACE_LOCATION }}"
+                serviceBusNamespaceName = "${{ vars.AZURE_SERVICE_BUS_NAMESPACE_NAME }}"
                 cosmosAccountName = "${{ vars.AZURE_COSMOS_ACCOUNT_NAME }}"
               }
             }

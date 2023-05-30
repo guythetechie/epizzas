@@ -5,8 +5,7 @@ param applicationInsightsName string
 param virtualNetworkName string
 param containerAppSubnetName string
 param privateLinkSubnetName string
-param eventGridNamespaceName string
-param eventGridNamespaceLocation string = 'eastus'
+param serviceBusNamespaceName string
 param cosmosAccountName string
 
 resource ampls 'Microsoft.Insights/privateLinkScopes@2021-07-01-preview' = {
@@ -28,7 +27,7 @@ resource amplsPrivateEndpoint 'Microsoft.Network/privateEndpoints@2022-11-01' = 
   properties: {
     subnet: {
       id: privateLinkSubnet.id
-    }    
+    }
     privateLinkServiceConnections: [
       {
         name: ampls.name
@@ -125,7 +124,7 @@ resource virtualNetworkDiagnosticSettings 'Microsoft.Insights/diagnosticSettings
 
     logs: [
       {
-        category: 'allLogs'
+        category: 'VMProtectionAlerts'
         enabled: true
       }
     ]
@@ -137,17 +136,34 @@ resource privateLinkSubnet 'Microsoft.Network/virtualNetworks/subnets@2022-11-01
   parent: virtualNetwork
 }
 
-resource eventGridNamespace 'Microsoft.EventGrid/namespaces@2023-06-01-preview' = {
-  name: eventGridNamespaceName
+resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview' = {
+  name: serviceBusNamespaceName
   tags: tags
-  location: eventGridNamespaceLocation
+  location: location
   sku: {
-    capacity: 1
     name: 'Standard'
   }
+}
+
+resource serviceBusNamespacePrivateEndpoint 'Microsoft.Network/privateEndpoints@2022-11-01' = {
+  name: '${serviceBusNamespace.name}-pep'
+  tags: tags
+  location: location
   properties: {
-    isZoneRedundant: true
-    publicNetworkAccess: 'Enabled'
+    subnet: {
+      id: privateLinkSubnet.id
+    }
+    privateLinkServiceConnections: [
+      {
+        name: serviceBusNamespace.name
+        properties: {
+          privateLinkServiceId: serviceBusNamespace.id
+          groupIds: [
+            'namespace'
+          ]
+        }
+      }
+    ]
   }
 }
 
@@ -205,6 +221,28 @@ resource cosmosAccountDiagnosticSettings 'Microsoft.Insights/diagnosticSettings@
       {
         category: 'Requests'
         enabled: true
+      }
+    ]
+  }
+}
+
+resource cosmosAccountPrivateEndpoint 'Microsoft.Network/privateEndpoints@2022-11-01' = {
+  name: '${cosmosAccount.name}-pep'
+  tags: tags
+  location: location
+  properties: {
+    subnet: {
+      id: privateLinkSubnet.id
+    }
+    privateLinkServiceConnections: [
+      {
+        name: cosmosAccount.name
+        properties: {
+          privateLinkServiceId: cosmosAccount.id
+          groupIds: [
+            'SQL'
+          ]
+        }
       }
     ]
   }
