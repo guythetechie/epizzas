@@ -11,7 +11,7 @@ param eventGridNamespaceLocation string = 'eastus'
 resource ampls 'Microsoft.Insights/privateLinkScopes@2021-07-01-preview' = {
   name: 'ampls'
   tags: tags
-  location: location
+  location: 'global'
   properties: {
     accessModeSettings: {
       ingestionAccessMode: 'Open'
