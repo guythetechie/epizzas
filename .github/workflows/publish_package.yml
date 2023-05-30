@@ -1,0 +1,45 @@
+name: Publish Nuget package
+
+on:
+  workflow_dispatch:
+    
+jobs:
+  publish_package:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: 7.x
+          
+      - name: Run tests
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = "Stop"
+          $VerbosePreference = "Continue"
+          $InformationPreference = "Continue"
+          
+          $testProjectPath = Join-Path "${{ github.workspace }}" "common" "code" "EPizzas.Common.Tests" "EPizzas.Common.Tests.csproj"
+          & dotnet test "$testProjectPath" --logger "console;verbosity=detailed"
+          if ($LASTEXITCODE -ne 0) { throw "Running test failed."}
+          
+      - name: Publish package
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = "Stop"
+          $VerbosePreference = "Continue"
+          $InformationPreference = "Continue"
+
+          $projectPath = Join-Path "${{ github.workspace }}" "common" "code" "EPizzas.Common" "EPizzas.Common.csproj"
+          $outputDirectoryPath = Join-Path "${{ runner.temp }}" "packages" "common"
+          & dotnet pack "$projectPath" --output "$outputDirectoryPath" --configuration "Release"
+          if ($LASTEXITCODE -ne 0) { throw "Packing project failed."}
+
+          $nugetPath = Join-Path "$outputDirectoryPath" "*.nupkg"
+          & dotnet nuget push "$nugetPath" --api-key "${{ github.token }}" --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
