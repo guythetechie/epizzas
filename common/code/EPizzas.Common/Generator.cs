@@ -105,10 +105,10 @@ public static class Generator
     {
         return NonEmptyOrWhiteSpaceString
                         .ListOf()
-                        .Select(list => list.Distinct())
+                        .Select(list => list.DistinctBy(x => x.ToUpperInvariant()))
                         .SelectMany(list => Gen.CollectToSequence(list,
-                                                                    key => from node in nodeGenerator.OrNull()
-                                                                           select KeyValuePair.Create(key, node)))
+                                                                  key => from node in nodeGenerator.OrNull()
+                                                                         select KeyValuePair.Create(key, node)))
                         .Select(list => new JsonObject(list));
     }
 
