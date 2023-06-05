@@ -6,6 +6,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsNotAsErrors>NU5104</WarningsNotAsErrors>
     <AnalysisLevel>latest-all</AnalysisLevel>
+    <Version>1.0.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
