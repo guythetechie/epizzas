@@ -51,7 +51,7 @@ internal static class Handler
     {
         return TypedResults.BadRequest(new
         {
-            code = new ErrorCode.InvalidId().ToString(),
+            code = nameof(ErrorCode.InvalidId),
             message = error
         });
     }
@@ -62,18 +62,18 @@ internal static class Handler
         {
             [] => TypedResults.Json(new
             {
-                code = new ErrorCode.InvalidConditionalHeader().ToString(),
+                code = nameof(ErrorCode.InvalidConditionalHeader),
                 message = "Must specify 'If-Match' header."
             }, statusCode: StatusCodes.Status428PreconditionRequired),
             [var ifMatch] when string.IsNullOrWhiteSpace(ifMatch) => TypedResults.BadRequest(new
             {
-                code = new ErrorCode.InvalidConditionalHeader().ToString(),
+                code = nameof(ErrorCode.InvalidConditionalHeader),
                 message = "'If-Match' header cannot be empty."
             }),
             [var ifMatch] => new ETag(ifMatch!),
             _ => TypedResults.BadRequest(new
             {
-                code = new ErrorCode.InvalidConditionalHeader().ToString(),
+                code = nameof(ErrorCode.InvalidConditionalHeader),
                 message = "'Must specify exactly one 'If-Match' header."
             })
         };
@@ -98,7 +98,7 @@ internal static class Handler
         {
             CancelError.ETagMismatch => TypedResults.Json(new
             {
-                code = new ErrorCode.ETagMismatch().ToString(),
+                code = nameof(ErrorCode.ETagMismatch),
                 message = "The 'If-Match' header's eTag doesn't match the server's. Another request might have already updated the order."
             }, statusCode: StatusCodes.Status412PreconditionFailed),
             _ => throw new NotImplementedException()

@@ -39,7 +39,7 @@ internal static class Handler
     {
         return TypedResults.BadRequest(new
         {
-            code = new ErrorCode.InvalidId().ToString(),
+            code = nameof(ErrorCode.InvalidId),
             message = error
         });
     }
@@ -54,7 +54,7 @@ internal static class Handler
 
     private static IResult GetSuccessfulResponse(Order order, ETag eTag)
     {
-        var json = Order.Converter.Serialize(order);
+        var json = Serialization.Serialize(order);
         json.Add("eTag", eTag.Value);
         json.Remove("id");
 
@@ -65,7 +65,7 @@ internal static class Handler
     {
         return TypedResults.NotFound(new
         {
-            code = new ErrorCode.ResourceNotFound().ToString(),
+            code = nameof(ErrorCode.ResourceNotFound),
             message = "Order with ID was not found."
         });
     }

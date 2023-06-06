@@ -41,7 +41,7 @@ public class CancelTests
                     .And
                     .Satisfy<JsonObject>(jsonObject =>
                     {
-                        jsonObject.GetStringProperty("code").Should().Be("InvalidConditionalHeader");
+                        jsonObject.GetStringProperty("code").Should().Be(nameof(ErrorCode.InvalidConditionalHeader));
                         jsonObject.TryGetStringProperty("message").Should().BeRight();
                     });
         });
@@ -71,7 +71,45 @@ public class CancelTests
                     .And
                     .Satisfy<JsonObject>(jsonObject =>
                     {
-                        jsonObject.GetStringProperty("code").Should().Be("ETagMismatch");
+                        jsonObject.GetStringProperty("code").Should().Be(nameof(ErrorCode.ETagMismatch));
+                        jsonObject.TryGetStringProperty("message").Should().BeRight();
+                    });
+        });
+    }
+
+    [Property]
+    public Property Specifying_multiple_If_Match_headers_fails()
+    {
+        var generator = from x in GenerateValidRequest()
+                        from ifMatchHeader in CommonGenerator.ETag
+                                                             .ArrayOf()
+                                                             .Where(x => x.Length > 1)
+                                                             .Select(x => x.Map(eTag => eTag.Value).ToArray())
+                                                             .Select(x => new StringValues(x))
+                        select (x.Fixture, x.Id, ifMatchHeader);
+
+        var arbitrary = generator.ToArbitrary();
+
+        return Prop.ForAll(arbitrary, async x =>
+        {
+            // Arrange
+            var cancellationToken = CancellationToken.None;
+            var (fixture, orderId, ifMatchHeader) = x;
+
+            fixture = fixture with
+            {
+                CancelOrder = async (_, _, _) => await ValueTask.FromResult(new CancelError.ETagMismatch())
+            };
+
+            // Act
+            using var response = await fixture.SendRequest(orderId, ifMatchHeader, cancellationToken);
+
+            // Assert
+            response.Should().Be400BadRequest()
+                    .And
+                    .Satisfy<JsonObject>(jsonObject =>
+                    {
+                        jsonObject.GetStringProperty("code").Should().Be(nameof(ErrorCode.InvalidConditionalHeader));
                         jsonObject.TryGetStringProperty("message").Should().BeRight();
                     });
         });

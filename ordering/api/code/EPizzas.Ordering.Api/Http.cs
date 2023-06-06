@@ -65,7 +65,7 @@ public sealed record ContinuationToken
     public string Value { get; }
 }
 
-internal abstract record ErrorCode
+public abstract record ErrorCode
 {
     public sealed record ResourceNotFound : ErrorCode;
     public sealed record ResourceAlreadyExists : ErrorCode;
@@ -75,23 +75,8 @@ internal abstract record ErrorCode
     public sealed record ETagMismatch : ErrorCode;
     public sealed record InternalServerError : ErrorCode;
     public sealed record InvalidContinuationToken : ErrorCode;
-
-    public sealed override string ToString()
-    {
-        return this switch
-        {
-            ResourceNotFound => nameof(ResourceNotFound),
-            ResourceAlreadyExists => nameof(ResourceAlreadyExists),
-            InvalidConditionalHeader => nameof(InvalidConditionalHeader),
-            InvalidJsonBody => nameof(InvalidJsonBody),
-            InvalidId => nameof(InvalidId),
-            ETagMismatch => nameof(ETagMismatch),
-            InternalServerError => nameof(InternalServerError),
-            InvalidContinuationToken => nameof(InvalidContinuationToken),
-            _ => throw new NotImplementedException()
-        };
-    }
 }
+
 internal static class HttpIResultExtensions
 {
     public static async ValueTask<IResult> Coalesce<TError, TSuccess>(this Either<TError, ValueTask<TSuccess>> either) where TSuccess : IResult where TError : IResult

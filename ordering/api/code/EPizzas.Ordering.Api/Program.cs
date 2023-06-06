@@ -66,7 +66,7 @@ public sealed class Program
     {
         var error = new
         {
-            code = new ErrorCode.InternalServerError().ToString(),
+            code = nameof(ErrorCode.InternalServerError),
             message = "An error has occurred."
         };
 

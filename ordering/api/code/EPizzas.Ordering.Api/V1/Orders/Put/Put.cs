@@ -95,7 +95,7 @@ internal static class Handler
     {
         return TypedResults.BadRequest(new
         {
-            code = new ErrorCode.InvalidId().ToString(),
+            code = nameof(ErrorCode.InvalidId),
             message = error
         });
     }
@@ -106,11 +106,11 @@ internal static class Handler
                 .ToEither()
                 .MapLeft(errors => TypedResults.BadRequest(new
                 {
-                    code = new ErrorCode.InvalidJsonBody().ToString(),
+                    code = nameof(ErrorCode.InvalidJsonBody),
                     message = "Request body is invalid.",
                     details = errors.Map(error => new
                     {
-                        code = new ErrorCode.InvalidJsonBody().ToString(),
+                        code = nameof(ErrorCode.InvalidJsonBody),
                         message = error
                     })
                 }) as IResult);
@@ -125,7 +125,7 @@ internal static class Handler
 
         return jsonObject.TryGetJsonObjectArrayProperty("pizzas")
                          .ToValidation()
-                         .Bind(pizzaJsons => pizzaJsons.Map(Pizza.Converter.Deserialize)
+                         .Bind(pizzaJsons => pizzaJsons.Map(Serialization.TryDeserializePizza)
                                                        .Sequence())
                          .Map(pizzas => new RequestModel
                          {
@@ -139,34 +139,34 @@ internal static class Handler
         {
             ([], []) => TypedResults.Json(new
             {
-                code = new ErrorCode.InvalidConditionalHeader().ToString(),
+                code = nameof(ErrorCode.InvalidConditionalHeader),
                 message = "Must specify 'If-Match' or 'If-None-Match' header."
             }, statusCode: StatusCodes.Status428PreconditionRequired),
             ({ Length: > 0 }, { Length: > 0 }) => TypedResults.BadRequest(new
             {
-                code = new ErrorCode.InvalidConditionalHeader().ToString(),
+                code = nameof(ErrorCode.InvalidConditionalHeader),
                 message = "Cannot specify both 'If-Match' and 'If-None-Match' headers."
             }),
             ([], [var ifNoneMatch]) when string.IsNullOrWhiteSpace(ifNoneMatch) => TypedResults.BadRequest(new
             {
-                code = new ErrorCode.InvalidConditionalHeader().ToString(),
+                code = nameof(ErrorCode.InvalidConditionalHeader),
                 message = "'If-None-Match' header must be '*'."
             }),
             ([], [var ifNoneMatch]) when new ETag(ifNoneMatch!).Value == ETag.All.Value => new PutAction.Create(),
             ([], _) => TypedResults.BadRequest(new
             {
-                code = new ErrorCode.InvalidConditionalHeader().ToString(),
+                code = nameof(ErrorCode.InvalidConditionalHeader),
                 message = "'If-None-Match' header must be '*'."
             }),
             ([var ifMatch], []) when string.IsNullOrWhiteSpace(ifMatch) => TypedResults.BadRequest(new
             {
-                code = new ErrorCode.InvalidConditionalHeader().ToString(),
+                code = nameof(ErrorCode.InvalidConditionalHeader),
                 message = "'If-Match' header cannot be empty."
             }),
             ([var ifMatch], []) => new PutAction.Update(new(ifMatch!)),
             (_, []) => TypedResults.BadRequest(new
             {
-                code = new ErrorCode.InvalidConditionalHeader().ToString(),
+                code = nameof(ErrorCode.InvalidConditionalHeader),
                 message = "'Must specify exactly one 'If-Match' header."
             })
         };
@@ -218,7 +218,7 @@ internal static class Handler
     {
         var locationUri = requestUri.RemoveQuery().ToUri();
 
-        var json = Order.Converter.Serialize(order);
+        var json = Serialization.Serialize(order);
         json.AddProperty("eTag", eTag.Value);
         json.Remove("id");
 
@@ -231,7 +231,7 @@ internal static class Handler
         {
             CreateError.ResourceAlreadyExists => TypedResults.Conflict(new
             {
-                code = new ErrorCode.ResourceAlreadyExists().ToString(),
+                code = nameof(ErrorCode.ResourceAlreadyExists),
                 message = "An order with the given ID already exists."
             }),
             _ => throw new NotImplementedException()
@@ -255,7 +255,7 @@ internal static class Handler
     {
         return TypedResults.NotFound(new
         {
-            code = new ErrorCode.ResourceNotFound().ToString(),
+            code = nameof(ErrorCode.ResourceNotFound),
             message = "Order with ID was not found."
         });
     }
@@ -280,7 +280,7 @@ internal static class Handler
 
     private static IResult GetSuccessfulUpdateResponse(Order order, ETag eTag)
     {
-        var json = Order.Converter.Serialize(order);
+        var json = Serialization.Serialize(order);
         json.AddProperty("eTag", eTag.Value);
         json.Remove("id");
 
@@ -293,12 +293,12 @@ internal static class Handler
         {
             UpdateError.ResourceDoesNotExist => TypedResults.NotFound(new
             {
-                code = new ErrorCode.ResourceNotFound().ToString(),
+                code = nameof(ErrorCode.ResourceNotFound),
                 message = "A resource with the given ID does not exist."
             }),
             UpdateError.ETagMismatch => TypedResults.Json(new
             {
-                code = new ErrorCode.ETagMismatch().ToString(),
+                code = nameof(ErrorCode.ETagMismatch),
                 message = "The eTag passed in the 'If-Match' header is invalid. Another process might have updated the resource.",
             }, statusCode: StatusCodes.Status412PreconditionFailed),
             _ => throw new NotImplementedException()

@@ -1,4 +1,5 @@
 ﻿using EPizzas.Common;
+using EPizzas.Ordering.Api.V1.Orders;
 using EPizzas.Ordering.Api.V1.Orders.List;
 using FluentAssertions;
 using FluentAssertions.LanguageExt;
@@ -43,7 +44,7 @@ public class ListTests
                     .And
                     .Satisfy<JsonObject>(jsonObject =>
                     {
-                        jsonObject.GetStringProperty("code").Should().Be("InvalidContinuationToken");
+                        jsonObject.GetStringProperty("code").Should().Be(nameof(ErrorCode.InvalidContinuationToken));
                         jsonObject.TryGetStringProperty("message").Should().BeRight();
                     });
         });
@@ -77,14 +78,14 @@ public class ListTests
                                                  {
                                                      pizzas = order.Pizzas.Map(pizza => new
                                                      {
-                                                         size = pizza.Size.ToString(),
+                                                         size = Serialization.Serialize(pizza.Size).ToString(),
                                                          toppings = pizza.Toppings.Map(topping => new
                                                          {
-                                                             type = topping.Type.ToString(),
-                                                             amount = topping.Amount.ToString()
+                                                             type = Serialization.Serialize(topping.Type).ToString(),
+                                                             amount = Serialization.Serialize(topping.Amount).ToString()
                                                          }),
                                                      }),
-                                                     status = order.Status.ToString(),
+                                                     status = Serialization.Serialize(order.Status).ToString(),
                                                      eTag = eTag.Value
                                                  };
                                              });

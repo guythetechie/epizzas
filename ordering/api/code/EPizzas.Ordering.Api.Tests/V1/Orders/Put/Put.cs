@@ -1,4 +1,5 @@
 ﻿using EPizzas.Common;
+using EPizzas.Ordering.Api.V1.Orders;
 using EPizzas.Ordering.Api.V1.Orders.Put;
 using FluentAssertions;
 using FluentAssertions.LanguageExt;
@@ -14,7 +15,6 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -46,7 +46,7 @@ public class PutTests
                     .And
                     .Satisfy<JsonObject>(jsonObject =>
                     {
-                        jsonObject.GetStringProperty("code").Should().Be("InvalidJsonBody");
+                        jsonObject.GetStringProperty("code").Should().Be(nameof(ErrorCode.InvalidJsonBody));
                         jsonObject.TryGetStringProperty("message").Should().BeRight();
                     });
         });
@@ -71,7 +71,7 @@ public class PutTests
                     .And
                     .Satisfy<JsonObject>(jsonObject =>
                     {
-                        jsonObject.GetStringProperty("code").Should().Be("InvalidConditionalHeader");
+                        jsonObject.GetStringProperty("code").Should().Be(nameof(ErrorCode.InvalidConditionalHeader));
                         jsonObject.TryGetStringProperty("message").Should().BeRight();
                     });
         });
@@ -101,7 +101,7 @@ public class PutTests
                     .And
                     .Satisfy<JsonObject>(jsonObject =>
                     {
-                        jsonObject.GetStringProperty("code").Should().Be("InvalidConditionalHeader");
+                        jsonObject.GetStringProperty("code").Should().Be(nameof(ErrorCode.InvalidConditionalHeader));
                         jsonObject.TryGetStringProperty("message").Should().BeRight();
                     });
         });
@@ -130,7 +130,7 @@ public class PutTests
                     .And
                     .Satisfy<JsonObject>(jsonObject =>
                     {
-                        jsonObject.GetStringProperty("code").Should().Be("InvalidConditionalHeader");
+                        jsonObject.GetStringProperty("code").Should().Be(nameof(ErrorCode.InvalidConditionalHeader));
                         jsonObject.TryGetStringProperty("message").Should().BeRight();
                     });
         });
@@ -153,17 +153,87 @@ public class PutTests
         {
             // Arrange
             var cancellationToken = CancellationToken.None;
-            var (orderId, requestJson, ifMatchHeader, ifNoneMatchHeader, fixture) = x;
+            var (orderId, requestJson, ifMatchHeader, _, fixture) = x;
 
             // Act
-            using var response = await fixture.SendRequest(orderId, ifMatchHeader, ifNoneMatchHeader, requestJson, cancellationToken);
+            using var response = await fixture.SendRequest(orderId, ifMatchHeader, default, requestJson, cancellationToken);
 
             // Assert
             response.Should().Be400BadRequest()
                     .And
                     .Satisfy<JsonObject>(jsonObject =>
                     {
-                        jsonObject.GetStringProperty("code").Should().Be("InvalidConditionalHeader");
+                        jsonObject.GetStringProperty("code").Should().Be(nameof(ErrorCode.InvalidConditionalHeader));
+                        jsonObject.TryGetStringProperty("message").Should().BeRight();
+                    });
+        });
+    }
+
+    [Property]
+    public Property Cannot_update_a_record_that_does_not_exist()
+    {
+        var generator = from request in GenerateValidUpdateRequest()
+                        from fixture in Gen.Elements(request.Fixture with { FindOrder = async (_, _) => await ValueTask.FromResult(Prelude.None) },
+                                                     request.Fixture with { UpdateOrder = async (_, _, _) => await ValueTask.FromResult(new UpdateError.ResourceDoesNotExist()) })
+                        select (request.OrderId, request.RequestJson, request.IfMatchHeader, request.IfNoneMatchHeader, fixture);
+
+        var arbitrary = generator.ToArbitrary();
+
+        return Prop.ForAll(arbitrary, async x =>
+        {
+            // Arrange
+            var cancellationToken = CancellationToken.None;
+            var (orderId, requestJson, ifMatchHeader, ifNoneMatchHeader, fixture) = x;
+            fixture = fixture with
+            {
+                CreateOrder = async (_, _) => await ValueTask.FromResult(new CreateError.ResourceAlreadyExists())
+            };
+
+            // Act
+            using var response = await fixture.SendRequest(orderId, ifMatchHeader, ifNoneMatchHeader, requestJson, cancellationToken);
+
+            // Assert
+            response.Should().Be404NotFound()
+                    .And
+                    .Satisfy<JsonObject>(jsonObject =>
+                    {
+                        jsonObject.GetStringProperty("code").Should().Be(nameof(ErrorCode.ResourceNotFound));
+                        jsonObject.TryGetStringProperty("message").Should().BeRight();
+                    });
+        });
+    }
+
+    [Property]
+    public Property Cannot_update_a_record_with_the_wrong_eTag()
+    {
+        var generator = from request in GenerateValidUpdateRequest()
+                        let fixture = request.Fixture with
+                        {
+                            UpdateOrder = async (_, _, _) => await ValueTask.FromResult(new UpdateError.ETagMismatch())
+                        }
+                        select (request.OrderId, request.RequestJson, request.IfMatchHeader, request.IfNoneMatchHeader, fixture);
+
+        var arbitrary = generator.ToArbitrary();
+
+        return Prop.ForAll(arbitrary, async x =>
+        {
+            // Arrange
+            var cancellationToken = CancellationToken.None;
+            var (orderId, requestJson, ifMatchHeader, ifNoneMatchHeader, fixture) = x;
+            fixture = fixture with
+            {
+                CreateOrder = async (_, _) => await ValueTask.FromResult(new CreateError.ResourceAlreadyExists())
+            };
+
+            // Act
+            using var response = await fixture.SendRequest(orderId, ifMatchHeader, ifNoneMatchHeader, requestJson, cancellationToken);
+
+            // Assert
+            response.Should().Be412PreconditionFailed()
+                    .And
+                    .Satisfy<JsonObject>(jsonObject =>
+                    {
+                        jsonObject.GetStringProperty("code").Should().Be(nameof(ErrorCode.ETagMismatch));
                         jsonObject.TryGetStringProperty("message").Should().BeRight();
                     });
         });
@@ -218,6 +288,35 @@ public class PutTests
                                                                                     })
                                                                });
                         requestPizzas.Should().BeEquivalentTo(responsePizzas);
+                    });
+        });
+    }
+
+    [Property]
+    public Property Cannot_create_a_record_that_already_exists()
+    {
+        var arbitrary = GenerateValidCreateRequest().ToArbitrary();
+
+        return Prop.ForAll(arbitrary, async x =>
+        {
+            // Arrange
+            var cancellationToken = CancellationToken.None;
+            var (orderId, requestJson, ifMatchHeader, ifNoneMatchHeader, fixture) = x;
+            fixture = fixture with
+            {
+                CreateOrder = async (_, _) => await ValueTask.FromResult(new CreateError.ResourceAlreadyExists())
+            };
+
+            // Act
+            using var response = await fixture.SendRequest(orderId, ifMatchHeader, ifNoneMatchHeader, requestJson, cancellationToken);
+
+            // Assert
+            response.Should().Be409Conflict()
+                    .And
+                    .Satisfy<JsonObject>(jsonObject =>
+                    {
+                        jsonObject.GetStringProperty("code").Should().Be(nameof(ErrorCode.ResourceAlreadyExists));
+                        jsonObject.TryGetStringProperty("message").Should().BeRight();
                     });
         });
     }
@@ -289,7 +388,7 @@ public class PutTests
                let requestJson = new JsonObject
                {
                    ["pizzas"] = order.Pizzas
-                                     .Map(pizza => JsonSerializer.SerializeToNode(pizza))
+                                     .Map(Serialization.Serialize)
                                      .ToJsonArray()
                }
                from newETag in CommonGenerator.ETag
@@ -310,7 +409,7 @@ public class PutTests
                let requestJson = new JsonObject
                {
                    ["pizzas"] = newOrder.Pizzas
-                                        .Map(pizza => JsonSerializer.SerializeToNode(pizza))
+                                        .Map(Serialization.Serialize)
                                         .ToJsonArray()
                }
                from newETag in CommonGenerator.ETag

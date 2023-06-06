@@ -10,3 +10,4 @@ using System.Diagnostics.CodeAnalysis;
 [assembly: SuppressMessage("Design", "CA1034:Nested types should not be visible", Justification = "We use nested files to simulate discriminated unions.")]
 [assembly: SuppressMessage("Performance", "CA1859:Use concrete types when possible for improved performance")]
 [assembly: SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes", Justification = "<Pending>", Scope = "module")]
+[assembly: SuppressMessage("Design", "CA1062:Validate arguments of public methods", Justification = "<Pending>")]

@@ -59,7 +59,7 @@ internal static class Handler
                                   .Map(x =>
                                   {
                                       var (order, eTag) = x;
-                                      var orderJson = Order.Converter.Serialize(order);
+                                      var orderJson = Serialization.Serialize(order);
                                       orderJson.Add("eTag", eTag.Value);
                                       orderJson.Remove("id");
 
@@ -86,7 +86,7 @@ internal static class Handler
         {
             ListError.ContinuationTokenNotFound => TypedResults.BadRequest(new
             {
-                code = new ErrorCode.InvalidContinuationToken().ToString(),
+                code = nameof(ErrorCode.InvalidContinuationToken),
                 message = "Continuation token was not found on server."
             }),
             _ => throw new NotImplementedException()
