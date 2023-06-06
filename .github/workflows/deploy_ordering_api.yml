@@ -51,3 +51,4 @@ jobs:
             $containerRegistry = Get-AzContainerRegistry -Name "${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}" -ResourceGroupName "${{ vars.AZURE_RESOURCE_GROUP_NAME }}"
             $containerRegistryServerName = $containerRegistry.LoginServer
             dotnet publish --os linux --arch x64 -p:PublishProfile=DefaultContainer -p:ContainerRegistry="$containerRegistryServerName" --configuration Release
+          azPSVersion: "latest"
