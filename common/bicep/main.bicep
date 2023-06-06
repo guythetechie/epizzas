@@ -161,6 +161,7 @@ resource privateDnsZoneVirtualNetworkLink 'Microsoft.Network/privateDnsZones/vir
   location: 'global'
   parent: privateDnsZone
   properties: {
+    registrationEnabled: false
     virtualNetwork: {
       id: virtualNetwork.id
     }
@@ -319,43 +320,6 @@ resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-01-01-pr
   }
   properties: {
     adminUserEnabled: true
-  }
-}
-
-resource containerRegistryPrivateEndpoint 'Microsoft.Network/privateEndpoints@2022-11-01' = {
-  name: '${containerRegistry.name}-pep'
-  tags: tags
-  location: location
-  properties: {
-    subnet: {
-      id: privateLinkSubnet.id
-    }
-    privateLinkServiceConnections: [
-      {
-        name: containerRegistry.name
-        properties: {
-          privateLinkServiceId: containerRegistry.id
-          groupIds: [
-            'registry'
-          ]
-        }
-      }
-    ]
-  }
-}
-
-resource containerRegistryPrivateEndpointPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2022-11-01' = {
-  name: '${containerRegistryPrivateEndpoint.name}-${privateDnsZone.name}-group'
-  parent: containerRegistryPrivateEndpoint
-  properties: {
-    privateDnsZoneConfigs: [
-      {
-        name: privateDnsZone.name
-        properties: {
-          privateDnsZoneId: privateDnsZone.id
-        }
-      }
-    ]
   }
 }
 
