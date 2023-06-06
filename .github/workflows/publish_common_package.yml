@@ -47,3 +47,4 @@ jobs:
 
           $nugetPath = Join-Path "$outputDirectoryPath" "*.nupkg"
           & dotnet nuget push "$nugetPath" --api-key "${{ github.token }}" --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+          if ($LASTEXITCODE -ne 0) { throw "Pushing Nuget package failed."}
