@@ -45,6 +45,7 @@ jobs:
               ResourceGroupName = "${{ vars.AZURE_RESOURCE_GROUP_NAME }}"
               TemplateFile = Join-Path "${{ github.workspace }}" "common" "bicep" "main.bicep"
               TemplateParameterObject = @{
+                privateDnsZoneName = "${{ vars.AZURE_PRIVATE_DNS_ZONE_NAME }}"
                 logAnalyticsWorkspaceName = "${{ vars.AZURE_LOG_ANALYTICS_WORKSPACE_NAME }}"
                 applicationInsightsName = "${{ vars.AZURE_APPLICATION_INSIGHTS_NAME }}"
                 virtualNetworkName = "${{ vars.AZURE_VIRTUAL_NETWORK_NAME }}"
@@ -52,6 +53,8 @@ jobs:
                 privateLinkSubnetName = "${{ vars.AZURE_PRIVATE_LINK_SUBNET_NAME }}"
                 serviceBusNamespaceName = "${{ vars.AZURE_SERVICE_BUS_NAMESPACE_NAME }}"
                 cosmosAccountName = "${{ vars.AZURE_COSMOS_ACCOUNT_NAME }}"
+                containerRegistryName = "${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}"
+                containerAppEnvironmentName = "${{ vars.AZURE_CONTAINER_APP_ENVIRONMENT_NAME }}"
               }
             }
             New-AzResourceGroupDeployment @deploymentParameters

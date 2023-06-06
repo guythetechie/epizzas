@@ -1,12 +1,21 @@
 param location string = resourceGroup().location
 param tags object = {}
 param logAnalyticsWorkspaceName string
+param privateDnsZoneName string
 param applicationInsightsName string
 param virtualNetworkName string
 param containerAppSubnetName string
 param privateLinkSubnetName string
 param serviceBusNamespaceName string
 param cosmosAccountName string
+param containerRegistryName string
+param containerAppEnvironmentName string
+
+resource privateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  name: privateDnsZoneName
+  tags: tags
+  location: 'global'
+}
 
 resource ampls 'Microsoft.Insights/privateLinkScopes@2021-07-01-preview' = {
   name: 'ampls'
@@ -36,6 +45,21 @@ resource amplsPrivateEndpoint 'Microsoft.Network/privateEndpoints@2022-11-01' = 
           groupIds: [
             'azuremonitor'
           ]
+        }
+      }
+    ]
+  }
+}
+
+resource amplsPrivateEndpointPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2022-11-01' = {
+  name: '${amplsPrivateEndpoint.name}-${privateDnsZone.name}-group'
+  parent: amplsPrivateEndpoint
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: privateDnsZone.name
+        properties: {
+          privateDnsZoneId: privateDnsZone.id
         }
       }
     ]
@@ -128,6 +152,18 @@ resource virtualNetworkDiagnosticSettings 'Microsoft.Insights/diagnosticSettings
         enabled: true
       }
     ]
+  }
+}
+
+resource privateDnsZoneVirtualNetworkLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  name: '${privateDnsZone.name}-${virtualNetwork.name}-link'
+  tags: tags
+  location: 'global'
+  parent: privateDnsZone
+  properties: {
+    virtualNetwork: {
+      id: virtualNetwork.id
+    }
   }
 }
 
@@ -256,5 +292,84 @@ resource cosmosAccountPrivateEndpoint 'Microsoft.Network/privateEndpoints@2022-1
         }
       }
     ]
+  }
+}
+
+resource cosmosAccountPrivateEndpointPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2022-11-01' = {
+  name: '${cosmosAccountPrivateEndpoint.name}-${privateDnsZone.name}-group'
+  parent: cosmosAccountPrivateEndpoint
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: privateDnsZone.name
+        properties: {
+          privateDnsZoneId: privateDnsZone.id
+        }
+      }
+    ]
+  }
+}
+
+resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-01-01-preview' = {
+  name: containerRegistryName
+  tags: tags
+  location: location
+  sku: {
+    name: 'Basic'
+  }
+  properties: {
+    adminUserEnabled: true
+  }
+}
+
+resource containerRegistryPrivateEndpoint 'Microsoft.Network/privateEndpoints@2022-11-01' = {
+  name: '${containerRegistry.name}-pep'
+  tags: tags
+  location: location
+  properties: {
+    subnet: {
+      id: privateLinkSubnet.id
+    }
+    privateLinkServiceConnections: [
+      {
+        name: containerRegistry.name
+        properties: {
+          privateLinkServiceId: containerRegistry.id
+          groupIds: [
+            'registry'
+          ]
+        }
+      }
+    ]
+  }
+}
+
+resource containerRegistryPrivateEndpointPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2022-11-01' = {
+  name: '${containerRegistryPrivateEndpoint.name}-${privateDnsZone.name}-group'
+  parent: containerRegistryPrivateEndpoint
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: privateDnsZone.name
+        properties: {
+          privateDnsZoneId: privateDnsZone.id
+        }
+      }
+    ]
+  }
+}
+
+resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2022-11-01-preview' = {
+  name: containerAppEnvironmentName
+  location: location
+  tags: tags
+  properties: {
+    appLogsConfiguration: {
+      destination: 'log-analytics'
+      logAnalyticsConfiguration: {
+        customerId: logAnalyticsWorkspace.properties.customerId
+        sharedKey: logAnalyticsWorkspace.listKeys().primarySharedKey
+      }
+    }
   }
 }
