@@ -6,8 +6,10 @@
 		<AnalysisLevel>latest-all</AnalysisLevel>
 		<ServerGarbageCollection>false</ServerGarbageCollection>
 		<InvariantGlobalization>true</InvariantGlobalization>
-		<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-		<DockerfileContext>..\..\..</DockerfileContext>
+		<EnableSdkContainerSupport>true</EnableSdkContainerSupport>
+		<ContainerBaseImage>mcr.microsoft.com/dotnet/nightly/aspnet:8.0-preview-jammy-chiseled</ContainerBaseImage>
+		<ContainerImageName>epizzas-ordering-api</ContainerImageName>
+		<ContainerImageTag>1.0.0</ContainerImageTag>
 		<RestoreAdditionalProjectSources>
 			https://nuget.pkg.github.com/guythetechie/index.json
 		</RestoreAdditionalProjectSources>

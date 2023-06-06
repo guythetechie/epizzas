@@ -155,6 +155,16 @@ resource virtualNetworkDiagnosticSettings 'Microsoft.Insights/diagnosticSettings
   }
 }
 
+resource containerAppSubnet 'Microsoft.Network/virtualNetworks/subnets@2022-11-01' existing = {
+  name: containerAppSubnetName
+  parent: virtualNetwork
+}
+
+resource privateLinkSubnet 'Microsoft.Network/virtualNetworks/subnets@2022-11-01' existing = {
+  name: privateLinkSubnetName
+  parent: virtualNetwork
+}
+
 resource privateDnsZoneVirtualNetworkLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
   name: '${privateDnsZone.name}-${virtualNetwork.name}-link'
   tags: tags
@@ -166,11 +176,6 @@ resource privateDnsZoneVirtualNetworkLink 'Microsoft.Network/privateDnsZones/vir
       id: virtualNetwork.id
     }
   }
-}
-
-resource privateLinkSubnet 'Microsoft.Network/virtualNetworks/subnets@2022-11-01' existing = {
-  name: privateLinkSubnetName
-  parent: virtualNetwork
 }
 
 resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview' = {
@@ -334,6 +339,9 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2022-11-01-p
         customerId: logAnalyticsWorkspace.properties.customerId
         sharedKey: logAnalyticsWorkspace.listKeys().primarySharedKey
       }
+    }
+    vnetConfiguration: {
+      infrastructureSubnetId: containerAppSubnet.id
     }
   }
 }

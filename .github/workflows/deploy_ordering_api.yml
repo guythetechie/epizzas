@@ -1,0 +1,53 @@
+name: Deploy ordering API
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Release environment
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish_to_container_registry:
+    name: Publish image to container registry
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          enable-AzPSSession: true
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.x'
+
+      - name: Publish to container registry
+        uses: azure/powershell@v1
+        with:
+          inlineScript: |
+            Set-StrictMode -Version Latest
+            $ErrorActionPreference = "Stop"
+            $VerbosePreference = "Continue"
+            $InformationPreference = "Continue"
+
+            Connect-AzContainerRegistry -Name ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
+
+            $containerRegistry = Get-AzContainerRegistry -Name "${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}" -ResourceGroupName "${{ vars.AZURE_RESOURCE_GROUP_NAME }}"
+            $containerRegistryServerName = $containerRegistry.LoginServer
+            dotnet publish --os linux --arch x64 -p:PublishProfile=DefaultContainer -p:ContainerRegistry="$containerRegistryServerName" --configuration Release
