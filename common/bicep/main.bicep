@@ -1,6 +1,7 @@
 param location string = resourceGroup().location
 param tags object = {}
 param logAnalyticsWorkspaceName string
+param storageAccountName string
 param applicationInsightsName string
 param networkSecurityGroupName string
 param virtualNetworkName string
@@ -197,6 +198,59 @@ resource logAnalyticsWorkspaceAmpls 'Microsoft.Insights/privateLinkScopes/scoped
   parent: ampls
   properties: {
     linkedResourceId: logAnalyticsWorkspace.id
+  }
+}
+
+resource storageAccount 'Microsoft.Storage/storageAccounts@2022-09-01' = {
+  name: storageAccountName
+  tags: tags
+  location: location
+  sku: {
+    name: 'Standard_LRS'
+  }
+  kind: 'StorageV2'
+  properties: {
+    networkAcls: {
+      defaultAction: 'Deny'
+      bypass: 'AzureServices'
+    }
+  }
+}
+
+resource storageAccountPrivateEndpoint 'Microsoft.Network/privateEndpoints@2022-11-01' = {
+  name: '${storageAccount.name}-pep'
+  tags: tags
+  location: location
+  properties: {
+    subnet: {
+      id: privateLinkSubnet.id
+    }
+    privateLinkServiceConnections: [
+      {
+        name: storageAccount.name
+        properties: {
+          privateLinkServiceId: storageAccount.id
+          groupIds: [
+            'blob'
+          ]
+        }
+      }
+    ]
+  }
+}
+
+resource storageAccountPrivateEndpointPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2022-11-01' = {
+  name: '${storageAccountPrivateEndpoint.name}-private-dns-zone-group'
+  parent: storageAccountPrivateEndpoint
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: blobPrivateDnsZone.name
+        properties: {
+          privateDnsZoneId: blobPrivateDnsZone.id
+        }
+      }
+    ]
   }
 }
 
