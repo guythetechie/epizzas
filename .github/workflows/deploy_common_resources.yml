@@ -53,6 +53,7 @@ jobs:
                 serviceBusNamespaceName = "${{ vars.AZURE_SERVICE_BUS_NAMESPACE_NAME }}"
                 cosmosAccountName = "${{ vars.AZURE_COSMOS_ACCOUNT_NAME }}"
                 containerRegistryName = "${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}"
+                containerRegistryReaderManagedIdentityName = "${{ vars.AZURE_CONTAINER_READER_MANAGED_IDENTITY_NAME }}"
                 containerAppEnvironmentName = "${{ vars.AZURE_CONTAINER_APP_ENVIRONMENT_NAME }}"
               }
             }

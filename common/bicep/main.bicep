@@ -8,6 +8,7 @@ param privateLinkSubnetName string
 param serviceBusNamespaceName string
 param cosmosAccountName string
 param containerRegistryName string
+param containerRegistryReaderManagedIdentityName string
 param containerAppEnvironmentName string
 
 resource amplsMonitorPrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
@@ -443,6 +444,25 @@ resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-01-01-pr
   }
   properties: {
     adminUserEnabled: true
+  }
+}
+
+resource containerRegistryReaderManagedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: containerRegistryReaderManagedIdentityName
+  tags: tags
+  location: location
+}
+
+resource acrPullRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
+  name: '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+  scope: subscription()
+}
+
+resource containerRegistryReaderManagedIdentityAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(containerRegistryReaderManagedIdentity.id, containerRegistry.id, acrPullRoleDefinition.id)
+  properties: {
+    principalId: containerRegistryReaderManagedIdentity.properties.principalId
+    roleDefinitionId: acrPullRoleDefinition.id
   }
 }
 
