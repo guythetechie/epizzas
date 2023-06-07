@@ -49,6 +49,16 @@ resource apiContainerApp 'Microsoft.App/containerApps@2022-11-01-preview' = {
         {
           image: '${containerRegistry.properties.loginServer}/${apiContainerImageName}:${apiContainerImageTag}'
           name: apiContainerImageName
+          env: [
+            {
+              name: 'Logging__Loglevel__Default'
+              value: 'Debug'
+            }
+            {
+              name: 'Logging__Loglevel__Microsoft.AspNetCore'
+              value: 'Debug'
+            }
+          ]
         }
       ]
       scale: {
