@@ -583,6 +583,7 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2022-11-01-p
       internal: true
       infrastructureSubnetId: containerAppSubnet.id
     }
+    zoneRedundant: true
   }
 }
 
