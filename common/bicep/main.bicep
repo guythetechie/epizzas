@@ -585,3 +585,12 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2022-11-01-p
     }
   }
 }
+
+module containerAppEnvironmentDns 'container-app-environment-dns.bicep' = {
+  name: 'container-app-environment-dns'
+  params: {
+    containerAppEnvironmentDefaultDomain: containerAppEnvironment.properties.defaultDomain
+    containerAppEnvironmentName: containerAppEnvironment.name
+    virtualNetworkName: virtualNetwork.name
+  }
+}
