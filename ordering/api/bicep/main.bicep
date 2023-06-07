@@ -39,6 +39,9 @@ resource apiContainerApp 'Microsoft.App/containerApps@2022-11-01-preview' = {
           identity: containerRegistryReaderManagedIdentity.id
         }
       ]
+      ingress: {
+        external: true
+      }
     }
     template: {
       containers: [
