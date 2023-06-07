@@ -32,7 +32,7 @@ resource apiContainerApp 'Microsoft.App/containerApps@2022-11-01-preview' = {
   properties: {
     managedEnvironmentId: containerAppEnvironment.id
     configuration: {
-      activeRevisionsMode: 'Multiple'
+      activeRevisionsMode: 'Single'
       registries: [
         {
           server: containerRegistry.properties.loginServer
