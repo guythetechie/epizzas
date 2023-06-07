@@ -58,6 +58,14 @@ resource apiContainerApp 'Microsoft.App/containerApps@2022-11-01-preview' = {
               name: 'Logging__Loglevel__Microsoft.AspNetCore'
               value: 'Debug'
             }
+            {
+              name: 'ASPNETCORE_HTTP_PORTS'
+              value: '80;8080'
+            }
+            {
+              name: 'ASPNETCORE_HTTPS_PORTS'
+              value: '443;8081'
+            }
           ]
         }
       ]
