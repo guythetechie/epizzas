@@ -47,16 +47,18 @@ jobs:
             $VerbosePreference = "Continue"
             $InformationPreference = "Continue"
 
+            Write-Information "Authenticating to GitHub Nuget registry..."
             dotnet nuget add source --username ${{ github.repository_owner }} --password ${{ github.token }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
             if ($LASTEXITCODE -ne 0) { throw "Failed to add GitHub Nuget registry."}
 
-            Connect-AzContainerRegistry -Name ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
+            Write-Information "Connecting to Azure Container Registry..."
+            $credentials = Get-AzContainerRegistryCredential -Name $containerRegistryName -ResourceGroupName $resourceGroupName            
+            Connect-AzContainerRegistry -Name ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }} -UserName "$($credentials.Username)" -Password "$($credentials.Password)"
 
+            Write-Information "Publishing image..."
             $projectPath = Join-Path "${{ github.workspace }}" "ordering" "api" "code" "EPizzas.Ordering.Api" "EPizzas.Ordering.Api.csproj"
-
             $containerRegistry = Get-AzContainerRegistry -Name "${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}" -ResourceGroupName "${{ vars.AZURE_RESOURCE_GROUP_NAME }}"
             $containerRegistryServerName = $containerRegistry.LoginServer
-
             dotnet publish "$projectPath" --os linux --arch x64 -p:PublishProfile=DefaultContainer -p:ContainerRegistry="$containerRegistryServerName" --configuration Release
             if ($LASTEXITCODE -ne 0) { throw "Publishing image failed."}
           azPSVersion: "latest"
