@@ -52,7 +52,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Failed to add GitHub Nuget registry."}
 
             Write-Information "Connecting to Azure Container Registry..."
-            Connect-AzContainerRegistry -Name ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
+            $credentials = Get-AzContainerRegistryCredential -Name ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }} -ResourceGroupName "${{ vars.AZURE_RESOURCE_GROUP_NAME }}"        
+            Connect-AzContainerRegistry -Name ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }} -UserName "$($credentials.Username)" -Password "$($credentials.Password)" -ErrorAction "SilentlyContinue" 
 
             Write-Information "Publishing image..."
             $projectPath = Join-Path "${{ github.workspace }}" "ordering" "api" "code" "EPizzas.Ordering.Api" "EPizzas.Ordering.Api.csproj"
