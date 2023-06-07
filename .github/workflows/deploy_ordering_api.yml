@@ -67,7 +67,8 @@ jobs:
             $projectPath = Join-Path "${{ github.workspace }}" "ordering" "api" "code" "EPizzas.Ordering.Api" "EPizzas.Ordering.Api.csproj"
             $containerRegistry = Get-AzContainerRegistry -Name "${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}" -ResourceGroupName "${{ vars.AZURE_RESOURCE_GROUP_NAME }}"
             $containerRegistryServerName = $containerRegistry.LoginServer
-            dotnet publish "$projectPath" --os linux --arch x64 -p:PublishProfile=DefaultContainer -p:ContainerRegistry="$containerRegistryServerName" -p:ContainerImageName="${{ env.API_CONTAINER_IMAGE_NAME }}"  -p:ContainerImageTag="${{ inputs.API_CONTAINER_IMAGE_TAG }}" --configuration Release
+            dotnet publish "$projectPath" --os linux --arch x64 -p:PublishProfile=DefaultContainer -p:ContainerRegistry="$containerRegistryServerName" -p:ContainerBaseImage="mcr.microsoft.com/dotnet/nightly/aspnet:8.0-preview-jammy-chiseled" -p:ContainerImageName="${{ env.API_CONTAINER_IMAGE_NAME }}"  -p:ContainerImageTag="${{ inputs.API_CONTAINER_IMAGE_TAG }}" --configuration Release
+
             if ($LASTEXITCODE -ne 0) { throw "Publishing image failed."}
           azPSVersion: "latest"
 
