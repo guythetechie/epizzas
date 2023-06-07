@@ -46,7 +46,7 @@ jobs:
             $VerbosePreference = "Continue"
             $InformationPreference = "Continue"
 
-            dotnet nuget add source --username USERNAME --password ${{ github.token }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+            dotnet nuget add source --username ${{ github.repository_owner }} --password ${{ github.token }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
             if ($LASTEXITCODE -ne 0) { throw "Failed to add GitHub Nuget registry."}
 
             Connect-AzContainerRegistry -Name ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
