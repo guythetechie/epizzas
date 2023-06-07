@@ -252,7 +252,7 @@ resource networkSecurityGroupDiagnosticSettings 'Microsoft.Insights/diagnosticSe
     logAnalyticsDestinationType: 'Dedicated'
     logs: [
       {
-        category: 'allLogs'
+        categoryGroup: 'allLogs'
         enabled: true
       }
     ]
@@ -526,6 +526,7 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2022-11-01-p
       }
     }
     vnetConfiguration: {
+      internal: true
       infrastructureSubnetId: containerAppSubnet.id
     }
   }
