@@ -244,6 +244,21 @@ resource allowHttpToContainerAppSubnetNetworkSecurityGroupRule 'Microsoft.Networ
   }
 }
 
+resource networkSecurityGroupDiagnosticSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'enable-all'
+  scope: networkSecurityGroup
+  properties: {
+    workspaceId: logAnalyticsWorkspace.id
+    logAnalyticsDestinationType: 'Dedicated'
+    logs: [
+      {
+        category: 'allLogs'
+        enabled: true
+      }
+    ]
+  }
+}
+
 resource virtualNetwork 'Microsoft.Network/virtualNetworks@2022-11-01' = {
   name: virtualNetworkName
   tags: tags
