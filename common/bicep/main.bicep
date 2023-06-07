@@ -1,7 +1,6 @@
 param location string = resourceGroup().location
 param tags object = {}
 param logAnalyticsWorkspaceName string
-param privateDnsZoneName string
 param applicationInsightsName string
 param virtualNetworkName string
 param containerAppSubnetName string
@@ -11,10 +10,99 @@ param cosmosAccountName string
 param containerRegistryName string
 param containerAppEnvironmentName string
 
-resource privateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
-  name: privateDnsZoneName
+resource amplsMonitorPrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  name: 'privatelink.monitor.azure.com'
   tags: tags
   location: 'global'
+}
+
+resource amplsMonitorPrivateDnsZoneVirtualNetworkLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  name: '${amplsMonitorPrivateDnsZone.name}-${virtualNetwork.name}-link'
+  tags: tags
+  location: 'global'
+  parent: amplsMonitorPrivateDnsZone
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: virtualNetwork.id
+    }
+  }
+}
+
+resource amplsOmsPrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  name: 'privatelink.oms.opinsights.azure.com'
+  tags: tags
+  location: 'global'
+}
+
+resource amplsOmsPrivateDnsZoneVirtualNetworkLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  name: '${amplsOmsPrivateDnsZone.name}-${virtualNetwork.name}-link'
+  tags: tags
+  location: 'global'
+  parent: amplsOmsPrivateDnsZone
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: virtualNetwork.id
+    }
+  }
+}
+
+resource amplsOdsPrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  name: 'privatelink.ods.opinsights.azure.com'
+  tags: tags
+  location: 'global'
+}
+
+resource amplsOdsPrivateDnsZoneVirtualNetworkLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  name: '${amplsOdsPrivateDnsZone.name}-${virtualNetwork.name}-link'
+  tags: tags
+  location: 'global'
+  parent: amplsOdsPrivateDnsZone
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: virtualNetwork.id
+    }
+  }
+}
+
+resource amplsAgentServicePrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  name: 'privatelink.agentsvc.azure-automation.net'
+  tags: tags
+  location: 'global'
+}
+
+resource amplsAgentServicePrivateDnsZoneVirtualNetworkLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  name: '${amplsAgentServicePrivateDnsZone.name}-${virtualNetwork.name}-link'
+  tags: tags
+  location: 'global'
+  parent: amplsAgentServicePrivateDnsZone
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: virtualNetwork.id
+    }
+  }
+}
+
+resource blobPrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  name: 'privatelink.blob.${environment().suffixes.storage}'
+  tags: tags
+  location: 'global'
+}
+
+resource blobPrivateDnsZoneVirtualNetworkLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  name: '${blobPrivateDnsZone.name}-${virtualNetwork.name}-link'
+  tags: tags
+  location: 'global'
+  parent: blobPrivateDnsZone
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: virtualNetwork.id
+    }
+  }
 }
 
 resource ampls 'Microsoft.Insights/privateLinkScopes@2021-07-01-preview' = {
@@ -52,14 +140,38 @@ resource amplsPrivateEndpoint 'Microsoft.Network/privateEndpoints@2022-11-01' = 
 }
 
 resource amplsPrivateEndpointPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2022-11-01' = {
-  name: '${amplsPrivateEndpoint.name}-${privateDnsZone.name}-group'
+  name: '${amplsPrivateEndpoint.name}-private-dns-zone-group'
   parent: amplsPrivateEndpoint
   properties: {
     privateDnsZoneConfigs: [
       {
-        name: privateDnsZone.name
+        name: amplsMonitorPrivateDnsZone.name
         properties: {
-          privateDnsZoneId: privateDnsZone.id
+          privateDnsZoneId: amplsMonitorPrivateDnsZone.id
+        }
+      }
+      {
+        name: amplsOmsPrivateDnsZone.name
+        properties: {
+          privateDnsZoneId: amplsOmsPrivateDnsZone.id
+        }
+      }
+      {
+        name: amplsOdsPrivateDnsZone.name
+        properties: {
+          privateDnsZoneId: amplsOdsPrivateDnsZone.id
+        }
+      }
+      {
+        name: amplsAgentServicePrivateDnsZone.name
+        properties: {
+          privateDnsZoneId: amplsAgentServicePrivateDnsZone.id
+        }
+      }
+      {
+        name: blobPrivateDnsZone.name
+        properties: {
+          privateDnsZoneId: blobPrivateDnsZone.id
         }
       }
     ]
@@ -163,19 +275,6 @@ resource containerAppSubnet 'Microsoft.Network/virtualNetworks/subnets@2022-11-0
 resource privateLinkSubnet 'Microsoft.Network/virtualNetworks/subnets@2022-11-01' existing = {
   name: privateLinkSubnetName
   parent: virtualNetwork
-}
-
-resource privateDnsZoneVirtualNetworkLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
-  name: '${privateDnsZone.name}-${virtualNetwork.name}-link'
-  tags: tags
-  location: 'global'
-  parent: privateDnsZone
-  properties: {
-    registrationEnabled: false
-    virtualNetwork: {
-      id: virtualNetwork.id
-    }
-  }
 }
 
 resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview' = {
@@ -301,15 +400,34 @@ resource cosmosAccountPrivateEndpoint 'Microsoft.Network/privateEndpoints@2022-1
   }
 }
 
+resource cosmosAccountPrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  name: 'privatelink.documents.azure.com'
+  tags: tags
+  location: 'global'
+}
+
+resource cosmosAccountPrivateDnsZoneVirtualNetworkLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  name: '${cosmosAccountPrivateDnsZone.name}-${virtualNetwork.name}-link'
+  tags: tags
+  location: 'global'
+  parent: cosmosAccountPrivateDnsZone
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: virtualNetwork.id
+    }
+  }
+}
+
 resource cosmosAccountPrivateEndpointPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2022-11-01' = {
-  name: '${cosmosAccountPrivateEndpoint.name}-${privateDnsZone.name}-group'
+  name: '${cosmosAccountPrivateEndpoint.name}-private-dns-zone-group'
   parent: cosmosAccountPrivateEndpoint
   properties: {
     privateDnsZoneConfigs: [
       {
-        name: privateDnsZone.name
+        name: cosmosAccountPrivateDnsZone.name
         properties: {
-          privateDnsZoneId: privateDnsZone.id
+          privateDnsZoneId: cosmosAccountPrivateDnsZone.id
         }
       }
     ]

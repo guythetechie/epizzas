@@ -45,7 +45,6 @@ jobs:
               ResourceGroupName = "${{ vars.AZURE_RESOURCE_GROUP_NAME }}"
               TemplateFile = Join-Path "${{ github.workspace }}" "common" "bicep" "main.bicep"
               TemplateParameterObject = @{
-                privateDnsZoneName = "${{ vars.AZURE_PRIVATE_DNS_ZONE_NAME }}"
                 logAnalyticsWorkspaceName = "${{ vars.AZURE_LOG_ANALYTICS_WORKSPACE_NAME }}"
                 applicationInsightsName = "${{ vars.AZURE_APPLICATION_INSIGHTS_NAME }}"
                 virtualNetworkName = "${{ vars.AZURE_VIRTUAL_NETWORK_NAME }}"
