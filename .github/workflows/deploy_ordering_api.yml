@@ -10,11 +10,19 @@ on:
         options:
           - dev
           - prod
+      API_CONTAINER_IMAGE_TAG:
+        description: API container image tag
+        required: true
+        type: string
+        default: 1.0.0
 
 permissions:
   contents: read
   id-token: write
   packages: read
+
+env:
+  API_CONTAINER_IMAGE_NAME: epizzas-ordering-api
 
 jobs:
   publish_to_container_registry:
@@ -36,7 +44,7 @@ jobs:
       - name: Install .NET
         uses: actions/setup-dotnet@v3
         with:
-          dotnet-version: '8.x'
+          dotnet-version: "8.x"
 
       - name: Publish to container registry
         uses: azure/powershell@v1
@@ -59,6 +67,38 @@ jobs:
             $projectPath = Join-Path "${{ github.workspace }}" "ordering" "api" "code" "EPizzas.Ordering.Api" "EPizzas.Ordering.Api.csproj"
             $containerRegistry = Get-AzContainerRegistry -Name "${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}" -ResourceGroupName "${{ vars.AZURE_RESOURCE_GROUP_NAME }}"
             $containerRegistryServerName = $containerRegistry.LoginServer
-            dotnet publish "$projectPath" --os linux --arch x64 -p:PublishProfile=DefaultContainer -p:ContainerRegistry="$containerRegistryServerName" --configuration Release
+            dotnet publish "$projectPath" --os linux --arch x64 -p:PublishProfile=DefaultContainer -p:ContainerRegistry="$containerRegistryServerName" -p:ContainerImageName="${{ env.API_CONTAINER_IMAGE_NAME }}"  -p:ContainerImageTag="${{ inputs.API_CONTAINER_IMAGE_TAG }}" --configuration Release
             if ($LASTEXITCODE -ne 0) { throw "Publishing image failed."}
+          azPSVersion: "latest"
+
+      - name: Deploy container app
+        uses: azure/powershell@v1
+        with:
+          inlineScript: |
+            Set-StrictMode -Version Latest
+            $ErrorActionPreference = "Stop"
+            $VerbosePreference = "Continue"
+            $InformationPreference = "Continue"
+
+            $deploymentParameters = @{
+              ResourceGroupName = "${{ vars.AZURE_RESOURCE_GROUP_NAME }}"
+              TemplateFile = Join-Path "${{ github.workspace }}" "common" "bicep" "main.bicep"
+              TemplateParameterObject = @{
+                logAnalyticsWorkspaceName = "${{ vars.AZURE_LOG_ANALYTICS_WORKSPACE_NAME }}"
+                applicationInsightsName = "${{ vars.AZURE_APPLICATION_INSIGHTS_NAME }}"
+                virtualNetworkName = "${{ vars.AZURE_VIRTUAL_NETWORK_NAME }}"
+                containerAppSubnetName = "${{ vars.AZURE_CONTAINER_APPS_SUBNET_NAME }}"
+                privateLinkSubnetName = "${{ vars.AZURE_PRIVATE_LINK_SUBNET_NAME }}"
+                serviceBusNamespaceName = "${{ vars.AZURE_SERVICE_BUS_NAMESPACE_NAME }}"
+                cosmosAccountName = "${{ vars.AZURE_COSMOS_ACCOUNT_NAME }}"
+                containerRegistryName = "${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}"
+                containerRegistryReaderManagedIdentityName = "${{ vars.AZURE_CONTAINER_READER_MANAGED_IDENTITY_NAME }}"
+                containerAppEnvironmentName = "${{ vars.AZURE_CONTAINER_APP_ENVIRONMENT_NAME }}"
+                apiContainerAppName = "${{ vars.AZURE_API_CONTAINER_APP_NAME }}"
+                apiContainerImageName = "${{ env.API_CONTAINER_IMAGE_NAME }}"
+                apiContainerImageTag = "${{ inputs.API_CONTAINER_IMAGE_TAG }}"
+              }
+            }
+            New-AzResourceGroupDeployment @deploymentParameters
+
           azPSVersion: "latest"
