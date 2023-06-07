@@ -2,6 +2,7 @@ param location string = resourceGroup().location
 param tags object = {}
 param logAnalyticsWorkspaceName string
 param applicationInsightsName string
+param networkSecurityGroupName string
 param virtualNetworkName string
 param containerAppSubnetName string
 param privateLinkSubnetName string
@@ -218,6 +219,31 @@ resource applicationInsightsAmpls 'Microsoft.Insights/privateLinkScopes/scopedRe
   }
 }
 
+resource networkSecurityGroup 'Microsoft.Network/networkSecurityGroups@2022-11-01' = {
+  name: networkSecurityGroupName
+  tags: tags
+  location: location
+}
+
+resource allowHttpToContainerAppSubnetNetworkSecurityGroupRule 'Microsoft.Network/networkSecurityGroups/securityRules@2022-11-01' = {
+  name: 'allow-http-to-container-app-subnet'
+  parent: networkSecurityGroup
+  properties: {
+    access: 'Allow'
+    direction: 'Inbound'
+    priority: 1000
+    protocol: 'Tcp'
+    sourceAddressPrefix: '*'
+    sourcePortRange: '*'
+    destinationAddressPrefix: containerAppSubnet.properties.addressPrefix
+    destinationPortRanges: [
+      '80'
+      '443'
+      '8080'
+    ]
+  }
+}
+
 resource virtualNetwork 'Microsoft.Network/virtualNetworks@2022-11-01' = {
   name: virtualNetworkName
   tags: tags
@@ -234,12 +260,18 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2022-11-01' = {
         name: containerAppSubnetName
         properties: {
           addressPrefix: '10.0.0.0/23'
+          networkSecurityGroup: {
+            id: networkSecurityGroup.id
+          }
         }
       }
       {
         name: privateLinkSubnetName
         properties: {
           addressPrefix: '10.0.2.0/26'
+          networkSecurityGroup: {
+            id: networkSecurityGroup.id
+          }
         }
       }
     ]

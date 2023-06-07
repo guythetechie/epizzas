@@ -47,6 +47,7 @@ jobs:
               TemplateParameterObject = @{
                 logAnalyticsWorkspaceName = "${{ vars.AZURE_LOG_ANALYTICS_WORKSPACE_NAME }}"
                 applicationInsightsName = "${{ vars.AZURE_APPLICATION_INSIGHTS_NAME }}"
+                networkSecurityGroupName = "${{ vars.AZURE_NETWORK_SECURITY_GROUP_NAME }}"
                 virtualNetworkName = "${{ vars.AZURE_VIRTUAL_NETWORK_NAME }}"
                 containerAppSubnetName = "${{ vars.AZURE_CONTAINER_APPS_SUBNET_NAME }}"
                 privateLinkSubnetName = "${{ vars.AZURE_PRIVATE_LINK_SUBNET_NAME }}"
