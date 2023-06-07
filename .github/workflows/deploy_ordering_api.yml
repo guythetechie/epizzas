@@ -82,7 +82,7 @@ jobs:
 
             $deploymentParameters = @{
               ResourceGroupName = "${{ vars.AZURE_RESOURCE_GROUP_NAME }}"
-              TemplateFile = Join-Path "${{ github.workspace }}" "common" "bicep" "main.bicep"
+              TemplateFile = Join-Path "${{ github.workspace }}" "ordering" "api" "bicep" "main.bicep"
               TemplateParameterObject = @{
                 logAnalyticsWorkspaceName = "${{ vars.AZURE_LOG_ANALYTICS_WORKSPACE_NAME }}"
                 applicationInsightsName = "${{ vars.AZURE_APPLICATION_INSIGHTS_NAME }}"
