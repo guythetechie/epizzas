@@ -279,7 +279,7 @@ resource networkSecurityGroup 'Microsoft.Network/networkSecurityGroups@2022-11-0
   location: location
 }
 
-resource allowHttpToContainerAppSubnetNetworkSecurityGroupRule 'Microsoft.Network/networkSecurityGroups/securityRules@2022-11-01' = {
+resource allowHttpToContainerAppEnvironmentNetworkSecurityGroupRule 'Microsoft.Network/networkSecurityGroups/securityRules@2022-11-01' = {
   name: 'allow-http-to-container-app-subnet'
   parent: networkSecurityGroup
   properties: {
@@ -289,11 +289,10 @@ resource allowHttpToContainerAppSubnetNetworkSecurityGroupRule 'Microsoft.Networ
     protocol: 'Tcp'
     sourceAddressPrefix: '*'
     sourcePortRange: '*'
-    destinationAddressPrefix: containerAppSubnet.properties.addressPrefix
+    destinationAddressPrefix: containerAppEnvironment.properties.staticIp
     destinationPortRanges: [
       '80'
       '443'
-      '8080'
     ]
   }
 }
