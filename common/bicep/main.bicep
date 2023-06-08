@@ -580,7 +580,7 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2022-11-01-p
       }
     }
     vnetConfiguration: {
-      internal: true
+      internal: false
       infrastructureSubnetId: containerAppSubnet.id
     }
     zoneRedundant: true
