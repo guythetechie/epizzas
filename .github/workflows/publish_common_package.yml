@@ -47,7 +47,7 @@ jobs:
 
           $projectPath = Join-Path "${{ github.workspace }}" "common" "code" "EPizzas.Common" "EPizzas.Common.csproj"
           $outputDirectoryPath = Join-Path "${{ runner.temp }}" "packages" "common"
-          & dotnet pack "$projectPath" --output "$outputDirectoryPath" --configuration "Release"
+          & dotnet pack "$projectPath" --output "$outputDirectoryPath" --configuration "Release" -p:PackageVersion=${{ inputs.PACKAGE_VERSION }}
           if ($LASTEXITCODE -ne 0) { throw "Packing project failed."}
 
           $nugetPath = Join-Path "$outputDirectoryPath" "*.nupkg"
