@@ -2,6 +2,11 @@ name: Publish Nuget package
 
 on:
   workflow_dispatch:
+    inputs:
+      PACKAGE_VERSION:
+        description: NuGet package version
+        required: true
+        type: string
 
 permissions:
   contents: read
