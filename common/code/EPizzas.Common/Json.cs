@@ -2,7 +2,6 @@ using CommunityToolkit.Diagnostics;
 using LanguageExt;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -24,37 +23,6 @@ internal static class JsonValueExtensions
 
 public static class JsonNodeExtensions
 {
-    [return: NotNullIfNotNull(nameof(node))]
-    public static JsonNode? Clone(this JsonNode? node)
-    {
-        return node switch
-        {
-            JsonArray jsonArray => jsonArray.Map(node => node.Clone())
-                                            .ToJsonArray(),
-            JsonObject jsonObject => new JsonObject(jsonObject.Map(kvp => KeyValuePair.Create(kvp.Key, kvp.Value.Clone()))),
-            JsonValue jsonValue => (jsonValue.TryGetValue<bool>().Map(x => JsonValue.Create<bool>(x)!) ||
-                                    jsonValue.TryGetValue<byte>().Map(x => JsonValue.Create<byte>(x)!) ||
-                                    jsonValue.TryGetValue<char>().Map(x => JsonValue.Create<char>(x)!) ||
-                                    jsonValue.TryGetValue<DateTime>().Map(x => JsonValue.Create<DateTime>(x)!) ||
-                                    jsonValue.TryGetValue<DateTimeOffset>().Map(x => JsonValue.Create<DateTimeOffset>(x)!) ||
-                                    jsonValue.TryGetValue<decimal>().Map(x => JsonValue.Create<decimal>(x)!) ||
-                                    jsonValue.TryGetValue<double>().Map(x => JsonValue.Create<double>(x)!) ||
-                                    jsonValue.TryGetValue<Guid>().Map(x => JsonValue.Create<Guid>(x)!) ||
-                                    jsonValue.TryGetValue<short>().Map(x => JsonValue.Create<short>(x)!) ||
-                                    jsonValue.TryGetValue<int>().Map(x => JsonValue.Create<int>(x)!) ||
-                                    jsonValue.TryGetValue<long>().Map(x => JsonValue.Create<long>(x)!) ||
-                                    jsonValue.TryGetValue<sbyte>().Map(x => JsonValue.Create<sbyte>(x)!) ||
-                                    jsonValue.TryGetValue<float>().Map(x => JsonValue.Create<float>(x)!) ||
-                                    jsonValue.TryGetValue<string>().Map(x => JsonValue.Create<string>(x)!) ||
-                                    jsonValue.TryGetValue<ushort>().Map(x => JsonValue.Create<ushort>(x)!) ||
-                                    jsonValue.TryGetValue<uint>().Map(x => JsonValue.Create<uint>(x)!) ||
-                                    jsonValue.TryGetValue<ulong>().Map(x => JsonValue.Create<ulong>(x)!)
-                                   ).IfNone(() => throw new NotSupportedException()),
-            null => null,
-            _ => throw new NotImplementedException()
-        };
-    }
-
     public static Option<JsonValue> TryAsJsonValue(this JsonNode? node)
     {
         return node as JsonValue;
@@ -299,12 +267,6 @@ public static class JsonObjectExtensions
         await JsonSerializer.SerializeAsync(stream, jsonObject, cancellationToken: cancellationToken);
         stream.Position = 0;
         return stream;
-    }
-
-    [return: NotNullIfNotNull(nameof(jsonObject))]
-    public static JsonObject? Clone(this JsonObject? jsonObject)
-    {
-        return (jsonObject as JsonNode).Clone()?.AsObject();
     }
 }
 

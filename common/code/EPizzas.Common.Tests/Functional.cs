@@ -2,51 +2,63 @@
 using FluentAssertions.LanguageExt;
 using FsCheck;
 using FsCheck.Fluent;
-using FsCheck.Xunit;
 using LanguageExt;
+using NUnit.Framework;
 using System;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
-using Xunit;
 
 namespace EPizzas.Common.Tests;
 
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
 public class OptionExtensionsTests
 {
-    [Fact]
-    public void IfNoneThrow_returns_value_if_option_is_Some()
+    [FsCheck.NUnit.Property()]
+    public Property IfNoneThrow_returns_value_if_option_is_Some()
     {
-        // Arrange
-        var value = Generator.GenerateDefault<string>().Sample();
-        var option = Option<string>.Some(value);
-        var errorMessage = Generator.NonEmptyOrWhiteSpaceString.Sample();
+        var arbitrary = Generator.GenerateDefault<object>()
+                                 .Where(x => x is not null)
+                                 .ToArbitrary();
 
-        // Act
-        var result = option.IfNoneThrow(errorMessage);
+        return Prop.ForAll(arbitrary, value =>
+        {
+            // Arrange
+            var option = Option<object>.Some(value);
 
-        // Assert
-        result.Should().Be(value);
+            // Act
+            var result = option.IfNoneThrow(string.Empty);
+
+            // Assert
+            result.Should().Be(value);
+        });
     }
 
-    [Fact]
-    public void IfNoneThrow_throws_if_option_is_None()
+    [FsCheck.NUnit.Property()]
+    public Property IfNoneThrow_throws_if_option_is_None()
     {
-        // Arrange
-        var option = Option<int>.None;
-        var errorMessage = Generator.NonEmptyOrWhiteSpaceString.Sample();
+        var arbitrary = Generator.AlphaNumericString.ToArbitrary();
 
-        // Act
-        var action = () => option.IfNoneThrow(errorMessage);
+        return Prop.ForAll(arbitrary, errorMessage =>
+        {
+            // Arrange
+            var option = Option<int>.None;
 
-        // Assert
-        action.Should().Throw<Exception>().WithMessage(errorMessage);
+            // Act
+            var action = () => option.IfNoneThrow(errorMessage);
+
+            // Assert
+            action.Should().Throw<Exception>().WithMessage(errorMessage);
+        });
     }
 }
 
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
 public class IAsyncEnumerableExtensionsTests
 {
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property ToSeq_enumerates_enumerable()
     {
         var arbitrary = Generator.GenerateDefault<string>()
@@ -67,37 +79,59 @@ public class IAsyncEnumerableExtensionsTests
     }
 }
 
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
 public class IDictionaryExtensionsTests
 {
-    [Fact]
-    public void Find_returns_Some_with_value_if_key_exists()
+    [FsCheck.NUnit.Property()]
+    public Property Find_returns_Some_with_value_if_key_exists()
     {
-        // Arrange
-        var (key, value) = ("key", 1);
-        var dictionary = CreateDictionary(key, value);
+        var generator = from dictionary in GenerateDictionaryItems().Where(x => x.Count > 0)
+                        from kvp in Gen.Elements(dictionary.AsEnumerable())
+                        select (dictionary, kvp.Key, kvp.Value);
 
-        // Act
-        var option = dictionary.Find(key);
+        var arbitrary = generator.ToArbitrary();
 
-        // Assert
-        option.Should().Be(value);
+        return Prop.ForAll(arbitrary, x =>
+        {
+            // Arrange
+            var (dictionary, key, value) = x;
+
+            // Act
+            var option = dictionary.Find(key);
+
+            // Assert
+            option.Should().BeSome().Which.Should().Be(value);
+        });
     }
 
-    [Fact]
-    public void Find_returns_None_if_key_does_not_exist()
+    [FsCheck.NUnit.Property()]
+    public Property Find_returns_None_if_key_does_not_exist()
     {
-        // Arrange
-        var dictionary = ImmutableDictionary<string, int>.Empty;
+        var generator = from dictionary in GenerateDictionaryItems()
+                        from nonExistingKey in Generator.GenerateDefault<string>().Where(key => dictionary.ContainsKey(key) is false)
+                        select (dictionary, nonExistingKey);
 
-        // Act
-        var option = dictionary.Find("nonExistingKey");
+        var arbitrary = generator.ToArbitrary();
 
-        // Assert
-        option.Should().BeNone();
+        return Prop.ForAll(arbitrary, x =>
+        {
+            // Arrange
+            var (dictionary, nonExistingKey) = x;
+
+            // Act
+            var option = dictionary.Find(nonExistingKey);
+
+            // Assert
+            option.Should().BeNone();
+        });
     }
 
-    private static ImmutableDictionary<TKey, TValue> CreateDictionary<TKey, TValue>(TKey key, TValue value) where TKey : notnull
+    private static Gen<ImmutableDictionary<string, int>> GenerateDictionaryItems()
     {
-        return ImmutableDictionary<TKey, TValue>.Empty.Add(key, value);
+        return Gen.Zip(Generator.AlphaNumericString, Generator.GenerateDefault<int>())
+                  .SeqOf()
+                  .DistinctBy(x => x.Item1)
+                  .Select(x => x.ToImmutableDictionary(x => x.Item1, x => x.Item2));
     }
 }

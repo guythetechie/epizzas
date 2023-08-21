@@ -2,34 +2,34 @@ using FluentAssertions;
 using FluentAssertions.LanguageExt;
 using FsCheck;
 using FsCheck.Fluent;
-using FsCheck.Xunit;
 using LanguageExt;
 using Microsoft.Extensions.Configuration;
+using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace EPizzas.Common.Tests;
 
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
 public class ConfigurationTests
 {
-    [Property(DisplayName = "GetValue throws if the configuration key does not exist")]
+    [FsCheck.NUnit.Property()]
     public Property GetValue_throws_if_configuration_key_does_not_exist()
     {
-        var generator = from fixture in GenerateFixture()
+        var generator = from items in GenerateConfigurationItems()
                         from nonExistingKey in Generator.NonEmptyOrWhiteSpaceString
-                                                        .Where(key => fixture.Items
-                                                                             .Filter(x => string.Equals(x.Key, key, StringComparison.OrdinalIgnoreCase))
-                                                                             .HeadOrNone()
-                                                                             .IsNone)
-                        select (fixture, nonExistingKey);
+                                                        .Where(key => items.ContainsKey(key) is false)
+                        select (items, nonExistingKey);
 
         var arbitrary = generator.ToArbitrary();
 
         return Prop.ForAll(arbitrary, x =>
         {
             // Arrange
-            var (fixture, nonExistingKey) = x;
-            var configuration = fixture.ToConfiguration();
+            var (items, nonExistingKey) = x;
+            var configuration = ToConfiguration(items);
 
             // Act
             var action = () => configuration.GetValue(nonExistingKey);
@@ -39,24 +39,21 @@ public class ConfigurationTests
         });
     }
 
-    [Property(DisplayName = "TryGetValue returns None if the configuration key does not exist")]
+    [FsCheck.NUnit.Property()]
     public Property TryGetValue_returns_None_if_configuration_key_does_not_exist()
     {
-        var generator = from fixture in GenerateFixture()
+        var generator = from items in GenerateConfigurationItems()
                         from nonExistingKey in Generator.NonEmptyOrWhiteSpaceString
-                                                        .Where(key => fixture.Items
-                                                                             .Filter(x => string.Equals(x.Key, key, StringComparison.OrdinalIgnoreCase))
-                                                                             .HeadOrNone()
-                                                                             .IsNone)
-                        select (fixture, nonExistingKey);
+                                                        .Where(key => items.ContainsKey(key) is false)
+                        select (items, nonExistingKey);
 
         var arbitrary = generator.ToArbitrary();
 
         return Prop.ForAll(arbitrary, x =>
         {
             // Arrange
-            var (fixture, nonExistingKey) = x;
-            var configuration = fixture.ToConfiguration();
+            var (items, nonExistingKey) = x;
+            var configuration = ToConfiguration(items);
 
             // Act
             var result = configuration.TryGetValue(nonExistingKey);
@@ -66,24 +63,21 @@ public class ConfigurationTests
         });
     }
 
-    [Property(DisplayName = "TryGetValue returns None if the configuration value is null")]
+    [FsCheck.NUnit.Property()]
     public Property TryGetValue_returns_None_if_configuration_value_is_null()
     {
-        var generator = from fixture in GenerateFixture().Where(fixture => fixture.Items
-                                                                                  .Find(kvp => kvp.Value is null)
-                                                                                  .IsSome)
-                        from keyWithNullValue in Gen.Elements(fixture.Items
-                                                                     .Filter(kvp => kvp.Value is null)
-                                                                     .Map(kvp => kvp.Key))
-                        select (fixture, keyWithNullValue);
+        var generator = from items in GenerateConfigurationItems()
+                        from keyWithNullValue in Gen.Elements(items.Keys)
+                        let itemsWithNullValue = items.SetItem(keyWithNullValue, null as string)
+                        select (itemsWithNullValue, keyWithNullValue);
 
         var arbitrary = generator.ToArbitrary();
 
         return Prop.ForAll(arbitrary, x =>
         {
             // Arrange
-            var (fixture, keyWithNullValue) = x;
-            var configuration = fixture.ToConfiguration();
+            var (items, keyWithNullValue) = x;
+            var configuration = ToConfiguration(items);
 
             // Act
             var result = configuration.TryGetValue(keyWithNullValue);
@@ -93,58 +87,45 @@ public class ConfigurationTests
         });
     }
 
-    [Property(DisplayName = "TryGetValue returns the value if the configuration key has a non-null value")]
+    [FsCheck.NUnit.Property()]
     public Property TryGetValue_returns_the_value_if_configuration_key_has_a_non_null_value()
     {
-        var generator = from fixture in GenerateFixture().Where(fixture => fixture.Items
-                                                                                  .Find(pair => pair.Value is not null)
-                                                                                  .IsSome)
-                        from existingKey in Gen.Elements(fixture.Items
-                                                                .Filter(kvp => kvp.Value is not null)
-                                                                .Map(kvp => kvp.Key))
-                        select (fixture, existingKey);
+        var generator = from items in GenerateConfigurationItems().Where(items => items.Values.Any(value => value is not null))
+                        from existingKey in Gen.Elements(items.Keys).Where(key => items[key] is not null)
+                        select (items, existingKey);
 
         var arbitrary = generator.ToArbitrary();
 
         return Prop.ForAll(arbitrary, x =>
         {
             // Arrange
-            var (fixture, existingKey) = x;
-            var configuration = fixture.ToConfiguration();
+            var (items, existingKey) = x;
+            var configuration = ToConfiguration(items);
 
             // Act
             var result = configuration.TryGetValue(existingKey);
 
             // Assert
-            var expectedValue = fixture.Items[existingKey];
+            var expectedValue = items[existingKey];
             result.Should().BeSome(value => value.Should().Be(expectedValue));
         });
     }
 
-    private static Gen<Fixture> GenerateFixture()
+    private static Gen<HashMap<string, string?>> GenerateConfigurationItems()
     {
-        return from map in Generator.NonEmptyOrWhiteSpaceString
-                                    .Zip(Generator.GenerateDefault<string>().OrNull())
-                                    .SeqOf()
-                                    .DistinctBy(x => x.Item1.ToUpperInvariant())
-                                    .Select(x => x.ToHashMap())
-               select new Fixture
-               {
-                   Items = map
-               };
+        return Generator.AlphaNumericString
+                        .Zip(Generator.GenerateDefault<string?>().OrNull())
+                        .NonEmptySeqOf()
+                        .DistinctBy(x => x.Item1.ToUpperInvariant())
+                        .Select(x => x.ToHashMap());
     }
 
-    private sealed record Fixture
+    private static IConfiguration ToConfiguration(IEnumerable<(string, string?)> items)
     {
-        public HashMap<string, string?> Items { get; init; }
+        var keyValuePairs = items.Map(x => KeyValuePair.Create(x.Item1, x.Item2));
 
-        public IConfiguration ToConfiguration()
-        {
-            var keyValuePairs = Items.Map(x => KeyValuePair.Create(x.Key, x.Value));
-
-            return new ConfigurationBuilder()
-                        .AddInMemoryCollection(keyValuePairs)
-                        .Build();
-        }
+        return new ConfigurationBuilder()
+                    .AddInMemoryCollection(keyValuePairs)
+                    .Build();
     }
 }

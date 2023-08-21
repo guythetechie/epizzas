@@ -169,7 +169,7 @@ public static class GenExtensions
                                         : Gen.SubListOf(items.AsEnumerable())
                                              .Select(list => list.ToSeq()));
     }
-
+    
     public static Gen<Seq<T>> DistinctBy<T, TKey>(this Gen<Seq<T>> gen, Func<T, TKey> keySelector)
     {
         return gen.Select(items => items.DistinctBy(keySelector).ToSeq());

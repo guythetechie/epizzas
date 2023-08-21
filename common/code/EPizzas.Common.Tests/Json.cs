@@ -2,35 +2,19 @@
 using FluentAssertions.LanguageExt;
 using FsCheck;
 using FsCheck.Fluent;
-using FsCheck.Xunit;
 using LanguageExt;
+using NUnit.Framework;
 using System;
 using System.Linq;
 using System.Text.Json.Nodes;
-using Xunit;
 
 namespace EPizzas.Common.Tests;
 
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
 public class JsonNodeExtensionsTests
 {
-    [Property]
-    public Property Clone_returns_copy()
-    {
-        var arbitrary = Generator.JsonNode.ToArbitrary();
-
-        return Prop.ForAll(arbitrary, source =>
-        {
-            // Act
-            var clone = source.Clone();
-
-            // Assert
-            var sourceString = source.ToJsonString();
-            var cloneString = clone.ToJsonString();
-            cloneString.Should().Be(sourceString);
-        });
-    }
-
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryAsJsonValue_returns_Some_if_node_is_a_json_value()
     {
         var arbitrary = Generator.JsonValue.Select(x => x as JsonNode).ToArbitrary();
@@ -46,7 +30,7 @@ public class JsonNodeExtensionsTests
 
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryAsJsonValue_returns_None_if_node_is_not_a_json_value()
     {
         var arbitrary = Gen.OneOf(Generator.JsonObject.Select(x => x as JsonNode),
@@ -64,7 +48,7 @@ public class JsonNodeExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryAsJsonObject_returns_Some_if_node_is_a_json_object()
     {
         var arbitrary = Generator.JsonObject.ToArbitrary();
@@ -80,7 +64,7 @@ public class JsonNodeExtensionsTests
 
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryAsJsonObject_returns_None_if_node_is_not_a_json_object()
     {
         var arbitrary = Gen.OneOf(Generator.JsonValue.Select(x => x as JsonNode),
@@ -98,7 +82,7 @@ public class JsonNodeExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryAsJsonArray_returns_Some_if_node_is_a_json_array()
     {
         var arbitrary = Generator.JsonArray.ToArbitrary();
@@ -114,7 +98,7 @@ public class JsonNodeExtensionsTests
 
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryAsJsonArray_returns_None_if_node_is_not_a_json_array()
     {
         var arbitrary = Gen.OneOf(Generator.JsonValue.Select(x => x as JsonNode),
@@ -133,9 +117,11 @@ public class JsonNodeExtensionsTests
     }
 }
 
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
 public class JsonObjectExtensionsTests
 {
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property GetProperty_returns_property_JsonNode()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -158,7 +144,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryGetProperty_returns_Some_if_the_property_exists()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -181,7 +167,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Fact]
+    [Test]
     public void TryGetProperty_returns_None_if_the_property_does_not_exist()
     {
         // Arrange
@@ -194,7 +180,7 @@ public class JsonObjectExtensionsTests
         result.Should().BeLeft();
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property GetJsonObjectProperty_returns_property_JsonObject()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -217,7 +203,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryGetJsonObjectProperty_returns_Some_if_the_property_is_a_json_object()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -240,7 +226,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryGetJsonObjectProperty_returns_None_if_the_property_is_not_a_json_object()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -264,7 +250,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property GetJsonArrayProperty_returns_property_JsonArray()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -287,7 +273,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryGetJsonArrayProperty_returns_Some_if_the_property_is_a_JsonArray()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -310,7 +296,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryGetJsonArrayProperty_returns_None_if_the_property_is_not_a_JsonArray()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -334,7 +320,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property GetJsonObjectArrayProperty_returns_property_JsonObjectArray()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -359,7 +345,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryGetJsonObjectArrayProperty_returns_Some_if_the_property_is_a_JsonObjectArray()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -384,7 +370,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryGetJsonObjectArrayProperty_returns_None_if_the_property_is_not_a_JsonObjectArray()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -412,7 +398,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property GetJsonValueProperty_returns_property_JsonValue()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -435,7 +421,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryGetJsonValueProperty_returns_Some_if_the_property_is_a_JsonValue()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -458,7 +444,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryGetJsonValueProperty_returns_None_if_the_property_is_not_a_JsonValue()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -481,7 +467,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property GetJsonStringProperty_returns_property_string()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -504,7 +490,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryGetJsonStringProperty_returns_Some_if_the_property_is_a_string()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -527,7 +513,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryGetJsonStringProperty_returns_None_if_the_property_is_not_a_string()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -554,7 +540,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property GetJsonBoolProperty_returns_property_bool()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -577,7 +563,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryGetJsonBoolProperty_returns_Some_if_the_property_is_a_bool()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -600,7 +586,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryGetJsonBoolProperty_returns_None_if_the_property_is_not_a_bool()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -627,7 +613,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property GetJsonIntProperty_returns_property_int()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -650,7 +636,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryGetJsonIntProperty_returns_Some_if_the_property_is_a_int()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -673,7 +659,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryGetJsonIntProperty_returns_None_if_the_property_is_not_a_int()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -700,7 +686,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property GetJsonDoubleProperty_returns_property_double()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -723,7 +709,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryGetJsonDoubleProperty_returns_Some_if_the_property_is_a_double()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -746,7 +732,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property TryGetJsonDoubleProperty_returns_None_if_the_property_is_not_a_double()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
@@ -773,7 +759,7 @@ public class JsonObjectExtensionsTests
         });
     }
 
-    [Property]
+    [FsCheck.NUnit.Property()]
     public Property AddProperty_adds_property()
     {
         var generator = from propertyName in Generator.GenerateDefault<string>()
