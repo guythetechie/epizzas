@@ -20,19 +20,19 @@ public abstract record PizzaTopping
     }
 }
 
-public abstract record PizzaToppingQuantity
+public abstract record PizzaToppingAmount
 {
-    public sealed record Light : PizzaToppingQuantity
+    public sealed record Light : PizzaToppingAmount
     {
         public static Light Instance { get; } = new();
     }
 
-    public sealed record Normal : PizzaToppingQuantity
+    public sealed record Normal : PizzaToppingAmount
     {
         public static Normal Instance { get; } = new();
     }
 
-    public sealed record Extra : PizzaToppingQuantity
+    public sealed record Extra : PizzaToppingAmount
     {
         public static Extra Instance { get; } = new();
     }
@@ -59,5 +59,5 @@ public abstract record PizzaSize
 public sealed record Pizza
 {
     public required PizzaSize Size { get; init; }
-    public required FrozenDictionary<PizzaTopping, PizzaToppingQuantity> Toppings { get; init; }
+    public required FrozenDictionary<PizzaTopping, PizzaToppingAmount> Toppings { get; init; }
 }

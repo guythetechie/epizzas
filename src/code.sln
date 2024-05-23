@@ -3,7 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "common", "common\common.csproj", "{C614C212-C82D-4DCD-BB60-24340D988D11}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "common", "common\common.csproj", "{C614C212-C82D-4DCD-BB60-24340D988D11}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "aspire.orchestrator", "aspire.orchestrator\aspire.orchestrator.csproj", "{3294ED18-59DD-4F15-BEB7-4E6437414FFC}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "api", "api\api.csproj", "{EE193701-2105-4059-81AF-F3F9F45FAE92}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +19,14 @@ Global
 		{C614C212-C82D-4DCD-BB60-24340D988D11}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C614C212-C82D-4DCD-BB60-24340D988D11}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C614C212-C82D-4DCD-BB60-24340D988D11}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3294ED18-59DD-4F15-BEB7-4E6437414FFC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3294ED18-59DD-4F15-BEB7-4E6437414FFC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3294ED18-59DD-4F15-BEB7-4E6437414FFC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3294ED18-59DD-4F15-BEB7-4E6437414FFC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EE193701-2105-4059-81AF-F3F9F45FAE92}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EE193701-2105-4059-81AF-F3F9F45FAE92}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EE193701-2105-4059-81AF-F3F9F45FAE92}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EE193701-2105-4059-81AF-F3F9F45FAE92}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
