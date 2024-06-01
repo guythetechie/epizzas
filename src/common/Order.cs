@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+﻿using LanguageExt;
 
 namespace common;
 
@@ -10,5 +10,5 @@ public sealed record OrderId : NonEmptyString
 public sealed record Order
 {
     public required OrderId Id { get; init; }
-    public required ImmutableArray<Pizza> Pizzas { get; init; }
+    public required Seq<Pizza> Pizzas { get; init; }
 }

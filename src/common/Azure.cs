@@ -1,15 +1,14 @@
 ﻿using Azure.Core;
+using Azure.Data.AppConfiguration;
 using Azure.Identity;
 using Azure.ResourceManager;
-using Flurl;
+using LanguageExt;
 using LanguageExt.UnsafeValueAccess;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.AzureAppConfiguration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace common;
 
@@ -26,8 +25,19 @@ public static class AzureServices
     {
         var configuration = builder.Build();
 
-        configuration.TryGetValue("AZURE_APP_CONFIGURATION_STORE_URL")
-                     .Iter(url => ConfigureAppConfiguration(builder, new Uri(url), tokenCredential));
+        TryGetConfigurationStoreUrl(configuration)
+            .Iter(uri => ConfigureAppConfiguration(builder, uri, tokenCredential));
+    }
+
+    private static Option<Uri> TryGetConfigurationStoreUrl(IConfiguration configuration) =>
+        Try.lift(() => GetConfigurationStoreUrl(configuration))
+           .Run()
+           .ToOption();
+
+    private static Uri GetConfigurationStoreUrl(IConfiguration configuration)
+    {
+        var url = configuration.GetValue("AZURE_APP_CONFIGURATION_STORE_URL");
+        return new Uri(url);
     }
 
     private static void ConfigureAppConfiguration(IConfigurationBuilder builder, Uri configurationStoreUri, TokenCredential tokenCredential) =>
@@ -40,7 +50,7 @@ public static class AzureServices
         services.TryAddSingleton(GetAzureEnvironment);
     }
 
-    public static AzureEnvironment GetAzureEnvironment(IServiceProvider provider)
+    private static AzureEnvironment GetAzureEnvironment(IServiceProvider provider)
     {
         var configuration = provider.GetRequiredService<IConfiguration>();
 
@@ -64,11 +74,6 @@ public static class AzureServices
     {
         var azureEnvironment = provider.GetRequiredService<AzureEnvironment>();
 
-        return GetTokenCredential(azureEnvironment);
-    }
-
-    public static TokenCredential GetTokenCredential(AzureEnvironment azureEnvironment)
-    {
         var options = new DefaultAzureCredentialOptions
         {
             AuthorityHost = azureEnvironment.AuthenticationEndpoint,
@@ -77,27 +82,5 @@ public static class AzureServices
         };
 
         return new DefaultAzureCredential(options);
-    }
-}
-
-public static class TokenCredentialExtensions
-{
-    public static async ValueTask<string> GetAccessTokenString(this TokenCredential tokenCredential, Uri uri, CancellationToken cancellationToken)
-    {
-        var scope = uri.RemovePath()
-                       .RemoveQuery()
-                       .AppendPathSegment(".default")
-                       .ToString();
-
-        return await tokenCredential.GetAccessTokenString([scope], cancellationToken);
-    }
-
-    public static async ValueTask<string> GetAccessTokenString(this TokenCredential tokenCredential, string[] scopes, CancellationToken cancellationToken)
-    {
-        var context = new TokenRequestContext(scopes);
-
-        var token = await tokenCredential.GetTokenAsync(context, cancellationToken);
-
-        return token.Token;
     }
 }

@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
-    <UserSecretsId>aspnet-api-92ca9e79-e82a-4d23-9c74-c8db7dc8b968</UserSecretsId>
+    <UserSecretsId>ce0d7f31-be13-492c-bf60-7523f4901231</UserSecretsId>
     <EnableSdkContainerDebugging>True</EnableSdkContainerDebugging>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <CodeAnalysisTreatWarningsAsErrors>false</CodeAnalysisTreatWarningsAsErrors>
@@ -15,14 +15,11 @@
 
   <ItemGroup>
     <PackageReference Include="Asp.Versioning.Http" Version="8.1.0" />
-    <PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" Version="8.1.0" />
+    <PackageReference Include="Aspire.Microsoft.Azure.Cosmos" Version="8.0.1" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.0-preview.4.24267.6" NoWarn="NU1605" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="9.0.0-preview.4.24267.6" NoWarn="NU1605" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.0-preview.4.24267.6" />
-    <PackageReference Include="Microsoft.Identity.Web" Version="2.17.0" />
-    <PackageReference Include="Microsoft.Identity.Web.DownstreamApi" Version="2.17.0" />
-    <PackageReference Include="Microsoft.Identity.Web.UI" Version="2.16.0" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+    <PackageReference Include="Microsoft.Identity.Web" Version="3.0.0-preview1" />
   </ItemGroup>
 
   <ItemGroup>

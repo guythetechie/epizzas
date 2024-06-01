@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 
 namespace common;
+
 public static class ConfigurationExtensions
 {
     public static string GetValue(this IConfiguration configuration, string key) =>

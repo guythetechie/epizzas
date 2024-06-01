@@ -18,3 +18,8 @@ public abstract record NonEmptyString
 
     public sealed override string ToString() => Value;
 }
+
+public sealed record ContinuationToken : NonEmptyString
+{
+    public ContinuationToken(string value) : base(value) { }
+}

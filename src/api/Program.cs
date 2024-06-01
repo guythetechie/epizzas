@@ -1,28 +1,19 @@
-using Asp.Versioning.ApiExplorer;
 using common;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Mvc.ApiExplorer;
-using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Primitives;
 using Microsoft.Identity.Web;
-using Microsoft.OpenApi.Models;
-using Swashbuckle.AspNetCore.SwaggerGen;
 using System;
-using System.Linq;
-using System.Text;
-using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace api;
 
 internal static class Program
 {
-
     public static async Task Main(string[] arguments)
     {
         var builder = WebApplication.CreateBuilder(arguments);
@@ -33,9 +24,17 @@ internal static class Program
 
         await application.RunAsync();
     }
+
     private static void ConfigureBuilder(IHostApplicationBuilder builder)
     {
+        ConfigureConfiguration(builder);
         ConfigureServices(builder);
+        ConfigureCosmos(builder);
+    }
+
+    private static void ConfigureConfiguration(IHostApplicationBuilder builder)
+    {
+        builder.Configuration.AddUserSecrets(typeof(Program).Assembly);
     }
 
     private static void ConfigureServices(IHostApplicationBuilder builder)
@@ -43,11 +42,13 @@ internal static class Program
         var services = builder.Services;
 
         OpenTelemetryServices.Configure(services, "api");
+        HealthCheckModule.ConfigureServices(services);
         AzureServices.ConfigureAzureEnvironment(services);
-        ConfigureAuthentication(services);
-        ConfigureEndpoints(services);
+        //ConfigureAuthentication(services);
+        //ConfigureEndpoints(services);
         ConfigureVersioning(services);
-        ConfigureSwagger(services);
+
+        v1.Services.Configure(services);
     }
 
     private static void ConfigureAuthentication(IServiceCollection services)
@@ -67,37 +68,54 @@ internal static class Program
                                             subscribeToJwtBearerMiddlewareDiagnosticsEvents: true);
 
         services.AddAuthorization();
-
-    }
-
-    private static void ConfigureEndpoints(IServiceCollection services)
-    {
-        services.AddEndpointsApiExplorer();
     }
 
     private static void ConfigureVersioning(IServiceCollection services)
     {
-        services.AddApiVersioning(options => options.ReportApiVersions = true)
-                .AddApiExplorer(options => options.GroupNameFormat = "'v'VVV");
+        services.AddApiVersioning(options =>
+        {
+            options.ReportApiVersions = true;
+            options.AssumeDefaultVersionWhenUnspecified = true;
+        });
     }
 
-    private static void ConfigureSwagger(IServiceCollection services)
+    private static void ConfigureCosmos(IHostApplicationBuilder builder)
     {
-        services.AddTransient<IConfigureOptions<SwaggerGenOptions>, ConfigureSwaggerOptions>();
-        services.AddSwaggerGen(options => options.OperationFilter<SwaggerOperationFilter>());
+        builder.AddAzureCosmosClient("cosmos",
+                                     settings =>
+                                     {
+                                         var configuration = builder.Configuration;
+                                         configuration.TryGetValue("COSMOS_CONNECTION_STRING")
+                                                      .Iter(connectionString => settings.ConnectionString = connectionString);
+
+                                         configuration.TryGetValue("COSMOS_ACCOUNT_ENDPOINT")
+                                                      .Iter(accountEndpoint => settings.AccountEndpoint = new(accountEndpoint));
+                                     },
+                                     options =>
+                                     {
+                                         options.AllowBulkExecution = true;
+                                         options.EnableContentResponseOnWrite = false;
+                                         options.Serializer = CosmosModule.Serializer;
+                                     });
+
+        builder.Services.TryAddSingleton(GetCosmosDatabase);
+    }
+
+    private static Database GetCosmosDatabase(IServiceProvider provider)
+    {
+        var client = provider.GetRequiredService<CosmosClient>();
+        var configuration = provider.GetRequiredService<IConfiguration>();
+
+        var databaseName = configuration.GetValue("COSMOS_DATABASE_NAME");
+        return client.GetDatabase(databaseName);
     }
 
     private static void ConfigureWebApplication(WebApplication application)
     {
-        if (application.Environment.IsDevelopment())
-        {
-            application.UseSwagger();
-            application.UseSwaggerUI();
-        }
-
         application.UseHttpsRedirection();
-        application.UseAuthentication();
-        application.UseAuthorization();
+        HealthCheckModule.ConfigureWebApplication(application);
+        //application.UseAuthentication();
+        //application.UseAuthorization();
         ConfigureEndpoints(application);
     }
 
@@ -106,28 +124,6 @@ internal static class Program
         var builder = application.NewVersionedApi();
 
         v1.Endpoints.Map(builder);
-    }
-
-    private static void ConfigureSwagger(WebApplication application)
-    {
-        application.UseSwagger();
-
-        if (application.Environment.IsDevelopment())
-        {
-            application.UseSwaggerUI(
-                options =>
-                {
-                    var descriptions = application.DescribeApiVersions();
-
-                    // build a swagger endpoint for each discovered API version
-                    foreach (var description in descriptions)
-                    {
-                        var url = $"/swagger/{description.GroupName}/swagger.json";
-                        var name = description.GroupName.ToUpperInvariant();
-                        options.SwaggerEndpoint(url, name);
-                    }
-                });
-        }
     }
 
     //    public static void Main(string[] args)
@@ -183,136 +179,4 @@ internal static class Program
 
     //        app.Run();
     //    }
-}
-
-file sealed class SwaggerOperationFilter : IOperationFilter
-{
-    public void Apply(OpenApiOperation operation, OperationFilterContext context)
-    {
-        var apiDescription = context.ApiDescription;
-
-        operation.Deprecated |= apiDescription.IsDeprecated();
-
-        // REF: https://github.com/domaindrivendev/Swashbuckle.AspNetCore/issues/1752#issue-663991077
-        foreach (var responseType in context.ApiDescription.SupportedResponseTypes)
-        {
-            // REF: https://github.com/domaindrivendev/Swashbuckle.AspNetCore/blob/b7cf75e7905050305b115dd96640ddd6e74c7ac9/src/Swashbuckle.AspNetCore.SwaggerGen/SwaggerGenerator/SwaggerGenerator.cs#L383-L387
-            var responseKey = responseType.IsDefaultResponse ? "default" : responseType.StatusCode.ToString();
-            var response = operation.Responses[responseKey];
-
-            foreach (var contentType in response.Content.Keys)
-            {
-                if (!responseType.ApiResponseFormats.Any(x => x.MediaType == contentType))
-                {
-                    response.Content.Remove(contentType);
-                }
-            }
-        }
-
-        if (operation.Parameters == null)
-        {
-            return;
-        }
-
-        // REF: https://github.com/domaindrivendev/Swashbuckle.AspNetCore/issues/412
-        // REF: https://github.com/domaindrivendev/Swashbuckle.AspNetCore/pull/413
-        foreach (var parameter in operation.Parameters)
-        {
-            var description = apiDescription.ParameterDescriptions.First(p => p.Name == parameter.Name);
-
-            parameter.Description ??= description.ModelMetadata?.Description;
-
-            if (parameter.Schema.Default == null &&
-                 description.DefaultValue != null &&
-                 description.DefaultValue is not DBNull &&
-                 description.ModelMetadata is ModelMetadata modelMetadata)
-            {
-                // REF: https://github.com/Microsoft/aspnet-api-versioning/issues/429#issuecomment-605402330
-                var json = JsonSerializer.Serialize(description.DefaultValue, modelMetadata.ModelType);
-                parameter.Schema.Default = OpenApiAnyFactory.CreateFromJson(json);
-            }
-
-            parameter.Required |= description.IsRequired;
-        }
-    }
-}
-
-file sealed class ConfigureSwaggerOptions(IApiVersionDescriptionProvider provider) : IConfigureOptions<SwaggerGenOptions>
-{
-    /// <inheritdoc />
-    public void Configure(SwaggerGenOptions options)
-    {
-        // add a swagger document for each discovered API version
-        // note: you might choose to skip or document deprecated API versions differently
-        foreach (var description in provider.ApiVersionDescriptions)
-        {
-            options.SwaggerDoc(description.GroupName, CreateInfoForApiVersion(description));
-        }
-    }
-
-    private static OpenApiInfo CreateInfoForApiVersion(ApiVersionDescription description)
-    {
-        var text = new StringBuilder("An example application with OpenAPI, Swashbuckle, and API versioning.");
-        var info = new OpenApiInfo()
-        {
-            Title = "EPizzas API",
-            Description = "EPizzas API",
-            Version = description.ApiVersion.ToString(),
-        };
-
-        if (description.IsDeprecated)
-        {
-            text.Append(" This API version has been deprecated.");
-        }
-
-        if (description.SunsetPolicy is { } policy)
-        {
-            if (policy.Date is { } when)
-            {
-                text.Append(" The API will be sunset on ")
-                    .Append(when.Date.ToShortDateString())
-                    .Append('.');
-            }
-
-            if (policy.HasLinks)
-            {
-                text.AppendLine();
-
-                var rendered = false;
-
-                for (var i = 0; i < policy.Links.Count; i++)
-                {
-                    var link = policy.Links[i];
-
-                    if (link.Type == "text/html")
-                    {
-                        if (!rendered)
-                        {
-                            text.Append("<h4>Links</h4><ul>");
-                            rendered = true;
-                        }
-
-                        text.Append("<li><a href=\"");
-                        text.Append(link.LinkTarget.OriginalString);
-                        text.Append("\">");
-                        text.Append(
-                            StringSegment.IsNullOrEmpty(link.Title)
-                            ? link.LinkTarget.OriginalString
-                            : link.Title.ToString());
-                        text.Append("</a></li>");
-                    }
-                }
-
-                if (rendered)
-                {
-                    text.Append("</ul>");
-                }
-            }
-        }
-
-        text.Append("<h4>Additional Information</h4>");
-        info.Description = text.ToString();
-
-        return info;
-    }
 }

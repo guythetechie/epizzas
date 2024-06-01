@@ -19,10 +19,12 @@ public static class OpenTelemetryServices
 #pragma warning restore CA2000 // Dispose objects before losing scope
 
         services.AddOpenTelemetry()
-                .WithMetrics(metrics => metrics.AddHttpClientInstrumentation()
+                .WithMetrics(metrics => metrics.AddAspNetCoreInstrumentation()
+                                               .AddHttpClientInstrumentation()
                                                .AddRuntimeInstrumentation()
                                                .AddMeter("*"))
-                .WithTracing(tracing => tracing.AddHttpClientInstrumentation()
+                .WithTracing(tracing => tracing.AddAspNetCoreInstrumentation()
+                                               .AddHttpClientInstrumentation()
                                                .AddSource("*")
                                                .SetSampler<AlwaysOnSampler>());
 
