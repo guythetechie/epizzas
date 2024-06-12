@@ -1,3 +1,5 @@
 {
-    "dotnet.defaultSolution": "common/code/EPizzas.Common.sln"
+    "dotnet.defaultSolution": "common/code/EPizzas.Common.sln",
+    "FSharp.inlayHints.enabled": false,
+    "editor.inlayHints.enabled": "offUnlessPressed"
 }
