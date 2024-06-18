@@ -28,7 +28,7 @@ module Services =
         database.GetContainer containerName |> OrdersCosmosContainer
 
     let configure (services: IServiceCollection) =
-        services.AddSingleton<OrdersCosmosContainer>(getOrdersCosmosContainer) |> ignore
+        services.AddSingleton<OrdersCosmosContainer>(getOrdersCosmosContainer)
 
 [<RequireQualifiedAccess>]
 module Cosmos =

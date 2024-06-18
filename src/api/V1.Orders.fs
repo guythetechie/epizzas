@@ -1,22 +1,18 @@
 ﻿namespace V1.Orders
 
-open Giraffe.EndpointRouting
+open Microsoft.AspNetCore.Routing
+open Microsoft.AspNetCore.Builder
 
 [<RequireQualifiedAccess>]
 module Services =
     let configure services =
-        Common.Services.configure services
+        services |> Common.Services.configure
         GetById.Services.configure services
         Cancel.Services.configure services
         List.Services.configure services
         Create.Services.configure services
+        services
 
 [<RequireQualifiedAccess>]
 module Endpoints =
-    let list =
-        [ subRoute
-              "/orders"
-              (GetById.Endpoints.list
-               @ Cancel.Endpoints.list
-               @ List.Endpoints.list
-               @ Create.Endpoints.list) ]
+    let configure (builder: IEndpointRouteBuilder) = builder.MapGroup("/orders")
