@@ -1,5 +1,6 @@
 ﻿using Azure;
 using LanguageExt;
+using LanguageExt.Common;
 using LanguageExt.UnsafeValueAccess;
 using Microsoft.Azure.Cosmos;
 using System;
@@ -50,20 +51,21 @@ public static class CosmosModule
 
     private static readonly JsonSerializerOptions jsonSerializerOptions = new() { PropertyNameCaseInsensitive = true };
 
-    public static OptionT<IO, CosmosRecord<T>> TryReadRecord<T>(Container container, CosmosId id, PartitionKey partitionKey, Func<JsonObject, T> recordDeserializer) =>
-        TryReadItem(container, id, partitionKey)
-            .Map(json => DeserializeRecord(json, recordDeserializer, _ => partitionKey));
+    public static IO<Option<CosmosRecord<T>> TryReadRecord<T>(Container container, CosmosId id, PartitionKey partitionKey, Func<JsonObject, T> recordDeserializer) =>
+        OptionT<IO, JsonObject>.LiftIO(TryReadItem(container, id, partitionKey))
+                .Map(json => DeserializeRecord(json, recordDeserializer, _ => partitionKey))
+                .Run()
+                .As();
 
-    public static OptionT<IO, JsonObject> TryReadItem(Container container, CosmosId id, PartitionKey partitionKey) =>
-        from response in OptionTIO.Lift(async env => await container.ReadItemStreamAsync(id.Value, partitionKey, cancellationToken: env.Token))
-        from _ in OptionTIO.Use(response)
-        from json in OptionTIO.Lift(response.StatusCode switch
+    public static IO<Option<JsonObject>> TryReadItem(Container container, CosmosId id, PartitionKey partitionKey) =>
+        from response in IO.liftAsync(async env => await container.ReadItemStreamAsync(id.Value, partitionKey, cancellationToken: env.Token)).Use()
+        from json in response.StatusCode switch
         {
             HttpStatusCode.NotFound => IO.Pure(Option<JsonObject>.None),
-            _ => from response in IO.Pure(response.EnsureSuccessStatusCode())
+            _ => from _ in IO.Pure(response.EnsureSuccessStatusCode())
                  from json in GetContentAsJsonObject(response)
                  select Prelude.Some(json)
-        })
+        }
         select json;
 
     private static IO<JsonObject> GetContentAsJsonObject(ResponseMessage response) =>
@@ -94,25 +96,23 @@ public static class CosmosModule
         };
     }
 
-    public static CosmosId GetCosmosId(JsonObject jsonObject)
-    {
-        var idString = jsonObject.GetStringProperty("id");
-        return new CosmosId(idString);
-    }
+    public static Eff<CosmosId> TryGetCosmosId(JsonObject jsonObject) =>
+        jsonObject.TryGetStringProperty("id")
+                  .Map(id => new CosmosId(id))
+                  .ToEff(Error.New);
 
-    public static ETag GetETag(JsonObject jsonObject)
-    {
-        var eTagString = jsonObject.GetStringProperty("_etag");
-        return new ETag(eTagString);
-    }
+    public static Eff<ETag> TryGetETag(JsonObject jsonObject) =>
+        jsonObject.TryGetStringProperty("_etag")
+                  .Map(etag => new ETag(etag))
+                  .ToEff(Error.New);
 
-    public static IO<Seq<JsonObject>> GetQueryResults(Container container, CosmosQueryOptions cosmosQueryOptions) =>
+    public static Eff<Seq<JsonObject>> GetQueryResults(Container container, CosmosQueryOptions cosmosQueryOptions) =>
         from iterator in GetFeedIterator(container, cosmosQueryOptions)
         from results in GetQueryResults(iterator)
         select results;
 
-    private static IO<FeedIterator> GetFeedIterator(Container container, CosmosQueryOptions cosmosQueryOptions) =>
-        IO.lift(() =>
+    private static Eff<FeedIterator> GetFeedIterator(Container container, CosmosQueryOptions cosmosQueryOptions) =>
+        Prelude.liftEff(() =>
         {
             var queryDefinition = cosmosQueryOptions.Query;
             var continuationToken = cosmosQueryOptions.ContinuationToken.ValueUnsafe()?.Value;
@@ -123,35 +123,23 @@ public static class CosmosModule
             return container.GetItemQueryStreamIterator(queryDefinition, continuationToken, queryRequestOptions);
         });
 
-    private static IO<Seq<JsonObject>> GetQueryResults(FeedIterator iterator)
+    private static Eff<Seq<JsonObject>> GetQueryResults(FeedIterator iterator)
     {
-        IO<Seq<JsonObject>> getSeq(Seq<JsonObject> seq) =>
+        Eff<Seq<JsonObject>> getSeq(Seq<JsonObject> seq) =>
             from results in iterator.HasMoreResults
                             ? from currentPageResults in GetCurrentPageResults(iterator)
-                              let currentPageDocuments = currentPageResults.Documents
                               from nextSeq in getSeq(seq + currentPageResults.Documents)
                               select nextSeq
-                            : IO.Pure(seq)
+                            : Prelude.SuccessEff(seq)
             select results;
 
-        return getSeq(Seq<JsonObject>.Empty);
+        return getSeq([]);
     }
-    //IO.lift(() =>
-    //{
-    //    var seq = Seq<JsonObject>.Empty;
 
-    //    while (iterator.HasMoreResults)
-    //    {
-    //        seq = seq + GetCurrentPageResults(iterator).Run().Documents;
-    //    }
-
-    //    return seq;
-    //});
-
-    private static IO<(Seq<JsonObject> Documents, Option<ContinuationToken> ContinuationToken)> GetCurrentPageResults(FeedIterator iterator) =>
-        from response in IO.liftAsync(async env => await iterator.ReadNextAsync(env.Token))
-        from _ in Prelude.use(() => response)
-        let __ = response.EnsureSuccessStatusCode()
+    private static Eff<(Seq<JsonObject> Documents, Option<ContinuationToken> ContinuationToken)> GetCurrentPageResults(FeedIterator iterator) =>
+        from cancellationToken in Prelude.cancelTokenEff
+        from response in Utilities.UseEff(async () => await iterator.ReadNextAsync(cancellationToken))
+        let _ = response.EnsureSuccessStatusCode()
         from responseJson in GetContentAsJsonObject(response)
         let documents = responseJson.GetJsonArrayProperty("Documents")
                                     .GetJsonObjects()
@@ -160,23 +148,22 @@ public static class CosmosModule
                                 : new ContinuationToken(response.ContinuationToken)
         select (documents, continuationToken);
 
-    public static EitherT<CosmosError.ResourceAlreadyExists, IO, Unit> CreateRecord(Container container, JsonObject jsonObject, PartitionKey partitionKey) =>
-        from response in EitherTIO.Lift<CosmosError.ResourceAlreadyExists, ResponseMessage>(async env =>
+    public static Eff<Either<CosmosError.ResourceAlreadyExists, Unit>> CreateRecord(Container container, JsonObject jsonObject, PartitionKey partitionKey) =>
+        from response in Utilities.UseEff(() => CreateItem(container, jsonObject, partitionKey))
+        let _ = response.EnsureSuccessStatusCode()
+        select response.StatusCode switch
         {
-            using var recordStream = Serializer.ToStream(jsonObject);
-            var options = new ItemRequestOptions { IfNoneMatchEtag = "*" };
+            HttpStatusCode.Conflict => Either<CosmosError.ResourceAlreadyExists, Unit>.Left(CosmosError.ResourceAlreadyExists.Instance),
+            HttpStatusCode.PreconditionFailed => CosmosError.ResourceAlreadyExists.Instance,
+            _ => Prelude.unit
+        };
 
-            return await container.CreateItemStreamAsync(recordStream, partitionKey, options, env.Token);
-        })
-        from _ in EitherTIO.Use<CosmosError.ResourceAlreadyExists, ResponseMessage>(response)
-        from unit in response.StatusCode switch
-        {
-            HttpStatusCode.Conflict => EitherTIO.Left<CosmosError.ResourceAlreadyExists, Unit>(CosmosError.ResourceAlreadyExists.Instance),
-            HttpStatusCode.PreconditionFailed => EitherTIO.Left<CosmosError.ResourceAlreadyExists, Unit>(CosmosError.ResourceAlreadyExists.Instance),
-            _ => from _ in EitherTIO.Right<CosmosError.ResourceAlreadyExists, ResponseMessage>(response.EnsureSuccessStatusCode())
-                 select Prelude.unit
-        }
-        select unit;
+    private static Eff<ResponseMessage> CreateItem(Container container, JsonObject jsonObject, PartitionKey partitionKey) =>
+        from stream in Prelude.use(() => Serializer.ToStream(jsonObject))
+        let options = new ItemRequestOptions { IfNoneMatchEtag = "*" }
+        from cancellationToken in Prelude.cancelTokenEff
+        from response in Prelude.liftEff(async () => await container.CreateItemStreamAsync(stream, partitionKey, options, cancellationToken: cancellationToken))
+        select response;
 }
 
 file sealed class CosmosSystemTextJsonSerializer : CosmosSerializer

@@ -61,3 +61,9 @@ public static class OptionExtensions
                                                                               ? valueIfError.Run().As().Run()
                                                                               : throw error))));
 }
+
+public static class IOExtensions
+{
+    public static IO<T> Use<T>(this IO<T> io) where T : IDisposable =>
+        Prelude.use(io).As();
+}

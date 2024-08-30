@@ -1,5 +1,4 @@
 ﻿using Azure.Core;
-using Azure.Data.AppConfiguration;
 using Azure.Identity;
 using Azure.ResourceManager;
 using LanguageExt;

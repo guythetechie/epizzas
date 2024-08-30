@@ -35,14 +35,21 @@ internal static class GetByIdEndpoints
         return operation.Run(cancellationToken);
     }
 
-    private static Either<IResult, OrderId> ValidateOrderId(string orderId) =>
-        string.IsNullOrWhiteSpace(orderId)
-        ? Prelude.Left(Results.BadRequest(new
+    private static Either<IResult, OrderId> ValidateOrderId(string orderId)
+    {
+        if (string.IsNullOrWhiteSpace(orderId))
         {
-            code = ApiErrorCode.InvalidRequestParameter.Instance.ToString(),
-            message = "Order ID cannot be empty."
-        }))
-        : Prelude.Right(new OrderId(orderId));
+            var result = Results.BadRequest(new
+            {
+                code = ApiErrorCode.InvalidRequestParameter.Instance.ToString(),
+                message = "Order ID cannot be empty."
+            });
+
+            return Prelude.Left(result);
+        }
+
+        return new OrderId(orderId);
+    }
 
     private static EitherT<IResult, IO, (Order, ETag)> FindOrder(OrderId orderId, FindOrder findOrder) =>
         findOrder(orderId)
