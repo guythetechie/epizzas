@@ -1,4 +1,4 @@
-﻿using LanguageExt;
+﻿using System.Collections.Frozen;
 
 namespace common;
 
@@ -77,5 +77,5 @@ public abstract record PizzaSize
 public sealed record Pizza
 {
     public required PizzaSize Size { get; init; }
-    public required HashMap<PizzaToppingKind, PizzaToppingAmount> Toppings { get; init; }
+    public required FrozenDictionary<PizzaToppingKind, PizzaToppingAmount> Toppings { get; init; }
 }

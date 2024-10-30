@@ -1,13 +1,17 @@
 ﻿using Azure.Core;
+using Azure.Data.AppConfiguration;
 using Azure.Identity;
 using Azure.ResourceManager;
-using LanguageExt;
+using Flurl;
 using LanguageExt.UnsafeValueAccess;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.AzureAppConfiguration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace common;
 
@@ -18,55 +22,41 @@ public sealed record AzureEnvironment(Uri AuthenticationEndpoint, Uri Management
     public static AzureEnvironment USGovernment { get; } = new(AzureAuthorityHosts.AzureGovernment, ArmEnvironment.AzureGovernment.Endpoint, new("https://graph.microsoft.us"));
 }
 
-public static class AzureServices
+public static class AzureModule
 {
-    public static void ConfigureAppConfiguration(IConfigurationBuilder builder, TokenCredential tokenCredential)
-    {
-        var configuration = builder.Build();
+    public static void ConfigureAppConfiguration(IHostApplicationBuilder builder) =>
+        builder.Configuration
+               .GetValue("AZURE_APP_CONFIGURATION_STORE_URL")
+               .Iter(url =>
+               {
+                   var uri = new Uri(url);
 
-        TryGetConfigurationStoreUrl(configuration)
-            .Iter(uri => ConfigureAppConfiguration(builder, uri, tokenCredential));
-    }
+                   ConfigureTokenCredential(builder);
 
-    private static Option<Uri> TryGetConfigurationStoreUrl(IConfiguration configuration) =>
-        Try.lift(() => GetConfigurationStoreUrl(configuration))
-           .Run()
-           .ToOption();
+                   var services = builder.Services;
+                   var serviceProvider = services.BuildServiceProvider();
+                   var tokenCredential = serviceProvider.GetRequiredService<TokenCredential>();
 
-    private static Uri GetConfigurationStoreUrl(IConfiguration configuration)
-    {
-        var url = configuration.GetValue("AZURE_APP_CONFIGURATION_STORE_URL");
-        return new Uri(url);
-    }
+                   ConfigureAppConfiguration(builder.Configuration, tokenCredential, uri);
 
-    private static void ConfigureAppConfiguration(IConfigurationBuilder builder, Uri configurationStoreUri, TokenCredential tokenCredential) =>
-        builder.AddAzureAppConfiguration(options => options.Connect(configurationStoreUri, tokenCredential)
-                                                           .Select(KeyFilter.Any, labelFilter: "CTOF-IMPORTS"),
-                                         optional: true);
+                   services.TryAddSingleton(provider => GetConfigurationClient(provider, uri));
+               });
 
-    public static void ConfigureAzureEnvironment(IServiceCollection services)
-    {
-        services.TryAddSingleton(GetAzureEnvironment);
-    }
-
-    private static AzureEnvironment GetAzureEnvironment(IServiceProvider provider)
-    {
-        var configuration = provider.GetRequiredService<IConfiguration>();
-
-        return configuration.TryGetValue("AZURE_CLOUD_ENVIRONMENT").ValueUnsafe() switch
+    private static void ConfigureAppConfiguration(IConfigurationManager configuration, TokenCredential tokenCredential, Uri endpoint) =>
+        configuration.AddAzureAppConfiguration(options =>
         {
-            null => AzureEnvironment.USGovernment,
-            "AzureGlobalCloud" or nameof(ArmEnvironment.AzurePublicCloud) => AzureEnvironment.Public,
-            "AzureUSGovernment" or nameof(ArmEnvironment.AzureGovernment) => AzureEnvironment.USGovernment,
-            _ => throw new InvalidOperationException($"AZURE_CLOUD_ENVIRONMENT is invalid. Valid values are {nameof(ArmEnvironment.AzurePublicCloud)}, {nameof(ArmEnvironment.AzureChina)}, {nameof(ArmEnvironment.AzureGovernment)}, {nameof(ArmEnvironment.AzureGermany)}")
-        };
-    }
+            options.Connect(endpoint, tokenCredential)
+                   .Select(KeyFilter.Any, LabelFilter.Null);
 
-    public static void ConfigureTokenCredential(IServiceCollection services)
+            configuration.GetValue("AZURE_APP_CONFIGURATION_STORE_LABEL")
+                         .Iter(label => options.Select(KeyFilter.Any, labelFilter: label));
+        }, optional: false);
+
+    public static void ConfigureTokenCredential(IHostApplicationBuilder builder)
     {
-        ConfigureAzureEnvironment(services);
+        ConfigureAzureEnvironment(builder);
 
-        services.TryAddSingleton(GetTokenCredential);
+        builder.Services.TryAddSingleton(GetTokenCredential);
     }
 
     private static TokenCredential GetTokenCredential(IServiceProvider provider)
@@ -81,5 +71,52 @@ public static class AzureServices
         };
 
         return new DefaultAzureCredential(options);
+    }
+
+    public static void ConfigureAzureEnvironment(IHostApplicationBuilder builder)
+    {
+        builder.Services.TryAddSingleton(GetAzureEnvironment);
+    }
+
+    private static AzureEnvironment GetAzureEnvironment(IServiceProvider provider)
+    {
+        var configuration = provider.GetRequiredService<IConfiguration>();
+
+        return configuration.GetValue("AZURE_CLOUD_ENVIRONMENT").ValueUnsafe() switch
+        {
+            null => AzureEnvironment.USGovernment,
+            "AzureGlobalCloud" or nameof(ArmEnvironment.AzurePublicCloud) => AzureEnvironment.Public,
+            "AzureUSGovernment" or nameof(ArmEnvironment.AzureGovernment) => AzureEnvironment.USGovernment,
+            _ => throw new InvalidOperationException($"AZURE_CLOUD_ENVIRONMENT is invalid. Valid values are {nameof(ArmEnvironment.AzurePublicCloud)}, {nameof(ArmEnvironment.AzureChina)}, {nameof(ArmEnvironment.AzureGovernment)}, {nameof(ArmEnvironment.AzureGermany)}")
+        };
+    }
+
+    private static ConfigurationClient GetConfigurationClient(IServiceProvider provider, Uri endpoint)
+    {
+        var tokenCredential = provider.GetRequiredService<TokenCredential>();
+
+        return new ConfigurationClient(endpoint, tokenCredential);
+    }
+}
+
+public static class TokenCredentialExtensions
+{
+    public static async ValueTask<string> GetAccessTokenString(this TokenCredential tokenCredential, Uri uri, CancellationToken cancellationToken)
+    {
+        var scope = uri.RemovePath()
+                       .RemoveQuery()
+                       .AppendPathSegment(".default")
+                       .ToString();
+
+        return await tokenCredential.GetAccessTokenString([scope], cancellationToken);
+    }
+
+    public static async ValueTask<string> GetAccessTokenString(this TokenCredential tokenCredential, string[] scopes, CancellationToken cancellationToken)
+    {
+        var context = new TokenRequestContext(scopes);
+
+        var token = await tokenCredential.GetTokenAsync(context, cancellationToken);
+
+        return token.Token;
     }
 }

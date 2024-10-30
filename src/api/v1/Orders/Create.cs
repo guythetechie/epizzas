@@ -9,19 +9,77 @@ using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection.Metadata;
 using System.Text.Json.Nodes;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace api.v1.Orders;
 
-internal sealed record ResourceAlreadyExists
-{
-    public static ResourceAlreadyExists Instance { get; } = new();
-}
+internal delegate EitherT<ApiErrorCode.ResourceAlreadyExists, Eff, Unit> CreateOrder(Order order);
 
-internal delegate EitherT<ResourceAlreadyExists, IO, Unit> CreateOrder(Order order);
+internal static class CreateModule
+{
+    public static void ConfigureEndpoints(IEndpointRouteBuilder builder)
+    {
+        builder.MapPost("/", handle);
+
+        static async ValueTask<IResult> handle([FromServices] CreateOrder createOrder, [FromBody] JsonNode? body, CancellationToken cancellationToken)
+        {
+            var operation = from order in ApiOperation.Lift(TryGetOrder(body))
+                            from _ in ApiOperation.Lift(CreateOrder(order, createOrder))
+                            let successfulResponse = GetSuccessfulResponse()
+                            select successfulResponse;
+
+            return await operation.Run(cancellationToken);
+        }
+
+        static Validation<Error, Order> validateOrderBody(JsonNode? orderJson) =>
+            from jsonObject in orderJson.AsJsonObject().ToValidation()
+            from order in
+                (validateOrderId(jsonObject), validatePizzas(jsonObject))
+                    .Apply((orderId, pizzas) => new Order
+                    {
+                        Id = orderId,
+                        Pizzas = pizzas
+                    })
+                    .As()
+            select order;
+
+        static Validation<Error, OrderId> validateOrderId(JsonObject orderJson) =>
+            (from orderIdString in orderJson.GetStringProperty("id")
+             from orderId in OrderId.From(orderIdString)
+             select orderId
+             )
+            .ToValidation();
+
+        static Validation<Error, ImmutableArray<Pizza>> validatePizzas(JsonObject orderJson) =>
+            from pizzaJsonObjects in validateOrderHasPizzaJsonObjects(orderJson)
+            from pizzas in pizzaJsonObjects.AsIterable()
+                                           .Traverse(validatePizza)
+                                           .As()
+            select pizzas.ToImmutableArray();
+
+        static Validation<Error, ImmutableArray<JsonObject>> validateOrderHasPizzaJsonObjects(JsonObject orderJson) =>
+            (from pizzasJsonArray in orderJson.GetJsonArrayProperty("pizzas")
+             from pizzaJsonObjects in pizzasJsonArray.AsIterable()
+                                                     .Traverse(node => node?.AsJsonObject())
+             from pizzasImmutableArray in pizzaJsonObjects.ToImmutableArray() switch
+             {
+                 var value when value.Length > 0 => Prelude.FinSucc(value),
+                 [] => Error.New("Order must have at least one pizza.")
+             }
+             select pizzasImmutableArray
+             )
+             .ToValidation();
+
+        static Validation<Error, Pizza> validatePizza(JsonObject body) =>
+
+    }
+}
 
 internal static class CreateEndpoints
 {
@@ -30,14 +88,14 @@ internal static class CreateEndpoints
         builder.MapPost("/", Handle);
     }
 
-    private static IResult Handle([FromServices] CreateOrder createOrder, [FromBody] JsonNode? body, CancellationToken cancellationToken)
+    private static async ValueTask<IResult> Handle([FromServices] CreateOrder createOrder, [FromBody] JsonNode? body, CancellationToken cancellationToken)
     {
-        var operation = from order in ApiOperation.LiftEither(TryGetOrder(body))
-                        from _ in ApiOperation.LiftEither(CreateOrder(order, createOrder))
-                        from successfulResponse in ApiOperation.Pure(GetSuccessfulResponse())
+        var operation = from order in ApiOperation.Lift(TryGetOrder(body))
+                        from _ in ApiOperation.Lift(CreateOrder(order, createOrder))
+                        let successfulResponse = GetSuccessfulResponse()
                         select successfulResponse;
 
-        return operation.Run(cancellationToken);
+        return await operation.Run(cancellationToken);
     }
 
     private static Either<IResult, Order> TryGetOrder(JsonNode? body) =>
@@ -54,8 +112,7 @@ internal static class CreateEndpoints
                 },
                 details = error is ManyErrors manyErrors
                           ? manyErrors.Errors
-                                      .Select(error => error.Message)
-                                      .ToSeq()
+                                      .Map(error => error.Message)
                           : []
             }));
 
@@ -103,7 +160,7 @@ internal static class CreateEndpoints
                 .ToValidation();
 
         static Validation<Error, Seq<Pizza>> validatePizzasJsonArray(JsonArray jsonArray) =>
-            jsonArray.AsEnumerableM()
+            jsonArray.AsIterable()
                      .Traverse(ValidatePizza)
                      .Map(pizzas => pizzas.ToSeq())
                      .As();
@@ -159,7 +216,7 @@ internal static class CreateEndpoints
                      .ToValidation();
 
         static Validation<Error, Seq<(PizzaToppingKind, PizzaToppingAmount)>> validatePizzaToppingsJsonArray(JsonArray jsonArray) =>
-            jsonArray.AsEnumerableM()
+            jsonArray.AsIterable()
                      .Traverse(ValidatePizzaTopping)
                      .Map(toppings => toppings.ToSeq())
                      .As();
@@ -222,7 +279,7 @@ internal static class CreateEndpoints
             toppings.GroupBy(x => x.Item1)
                     .Where(@group => @group.Count() > 1)
                     .Select(@group => @group.Key)
-                    .AsEnumerableM()
+                    .AsIterable()
                     .ToSeq() switch
             {
             [] => toppings,
@@ -234,7 +291,7 @@ internal static class CreateEndpoints
                select toppings.ToHashMap();
     }
 
-    private static EitherT<IResult, IO, Unit> CreateOrder(Order order, CreateOrder createOrder) =>
+    private static EitherT<IResult, Eff, Unit> CreateOrder(Order order, CreateOrder createOrder) =>
         createOrder(order)
             .MapLeft(_ => Results.Conflict(new
             {

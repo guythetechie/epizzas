@@ -1,69 +1,81 @@
 ﻿using LanguageExt;
 using LanguageExt.Common;
-using LanguageExt.Traits;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace common;
 
-public static class OptionTIO
+public static class EffModule
 {
-    public static OptionT<IO, A> Lift<A>(Func<Task<A>> f) =>
-        OptionT<IO, A>.LiftIO(IO.liftAsync(f));
-
-    public static OptionT<IO, A> Lift<A>(Func<EnvIO, Task<A>> f) =>
-        OptionT<IO, A>.LiftIO(IO.liftAsync(f));
-
-    public static OptionT<IO, A> Use<A>(A a) where A : IDisposable =>
-        OptionT<IO, A>.LiftIO(Prelude.use(() => a));
-
-    public static OptionT<IO, A> Lift<A>(IO<Option<A>> io) =>
-        OptionT<IO, A>.LiftIO(io);
+    public static Eff<T> Use<T>(this Eff<T> eff) where T : IDisposable =>
+        Prelude.use(eff).As();
 }
 
-public static class EitherTIO
+public static class IOModule
 {
-    public static EitherT<L, IO, R> Lift<L, R>(Func<Task<R>> f) =>
-        EitherT<L, IO, R>.LiftIO(IO.liftAsync(f));
-
-    public static EitherT<L, IO, R> Lift<L, R>(Func<EnvIO, Task<R>> f) =>
-        EitherT<L, IO, R>.LiftIO(IO.liftAsync(f));
-
-    public static EitherT<L, IO, R> Use<L, R>(R r) where R : IDisposable =>
-        EitherT<L, IO, R>.LiftIO(Prelude.use(() => r));
-
-    public static EitherT<L, IO, R> Left<L, R>(L l) =>
-        EitherT<L, IO, R>.Left(l);
-
-    public static EitherT<L, IO, R> Right<L, R>(R r) =>
-        EitherT<L, IO, R>.Right(r);
+    public static IO<T> Use<T>(this IO<T> io) where T : IDisposable =>
+        Prelude.use(io).As();
 }
 
-public static class EitherExtensions
+public static class FinExtensions
 {
-    public static Validation<Error, R> ToValidation<R>(this Either<string, R> either) =>
-        either.Map(Validation<Error, R>.Success)
-              .IfLeft(error => Error.New(error));
-
-    public static EitherT<L2, M, R> MapLeft<L1, L2, M, R>(this EitherT<L1, M, R> transformer, Func<L1, L2> f) where M : Monad<M> =>
-        EitherT.lift<L2, M, Either<L2, R>>(from either in transformer.Run()
-                                           select either.MapLeft(f))
-               .Bind(Prelude.identity);
+    public static Fin<T> ReplaceError<T, TError>(this Fin<T> fin, Func<TError> getError) where TError : Error =>
+        fin.BindFail(_ => getError());
 }
 
 public static class OptionExtensions
 {
-    public static OptionT<IO, A> Catch<A>(this OptionT<IO, A> transformer, Predicate<Error> predicate, OptionT<IO, A> valueIfError) =>
-        transformer.MapT(k => k.As()
-                               .Try()
-                               .Bind(fin => fin.Map(IO.Pure)
-                                               .IfFail(error => IO.lift(() => predicate(error)
-                                                                              ? valueIfError.Run().As().Run()
-                                                                              : throw error))));
-}
+    /// <summary>
+    /// If <paramref name="option"/> is None, execute <paramref name="action"/> on its value.
+    /// </summary>
+    public static async ValueTask IfNoneTask<T>(this Option<T> option, Func<ValueTask> action) =>
+        await option.Map(_ => ValueTask.CompletedTask)
+                    .IfNone(action);
 
-public static class IOExtensions
-{
-    public static IO<T> Use<T>(this IO<T> io) where T : IDisposable =>
-        Prelude.use(io).As();
+    /// <summary>
+    /// If <paramref name="option"/> is Some, execute <paramref name="action"/> on its value.
+    /// </summary>
+    public static async ValueTask IterTask<T>(this Option<T> option, Func<T, ValueTask> action) =>
+        await option.IterTask((t, _) => action(t), CancellationToken.None);
+
+    /// <summary>
+    /// If <paramref name="option"/> is Some, execute <paramref name="action"/> on its value.
+    /// </summary>
+    public static async ValueTask IterTask<T>(this Option<T> option, Func<T, CancellationToken, ValueTask> action, CancellationToken cancellationToken) =>
+        await option.Match(t => action(t, cancellationToken), () => ValueTask.CompletedTask);
+
+    /// <summary>
+    /// If <paramref name="option"/> is Some, apply <paramref name="map"/> to its value and return
+    /// the <typeparamref name="T2"/> result wrapped in Some. Otherwise, return None of type <typeparamref name="T2"/>.
+    /// </summary>
+    public static async ValueTask<Option<T2>> MapTask<T, T2>(this Option<T> option, Func<T, ValueTask<T2>> map) =>
+        await option.BindTask(async t =>
+        {
+            var t2 = await map(t);
+            return Option<T2>.Some(t2);
+        });
+
+    /// <summary>
+    /// If <paramref name="option"/> is Some, apply <paramref name="bind"/> to its value and return
+    /// the result. Otherwise, return None of type <typeparamref name="T2"/>.
+    /// </summary>
+    public static async ValueTask<Option<T2>> BindTask<T, T2>(this Option<T> option, Func<T, ValueTask<Option<T2>>> bind) =>
+        await option.BindTask((t, _) => bind(t), CancellationToken.None);
+
+    /// <summary>
+    /// If <paramref name="option"/> is Some, apply <paramref name="bind"/> to its value and return
+    /// the result. Otherwise, return None of type <typeparamref name="T2"/>.
+    /// </summary>
+    public static async ValueTask<Option<T2>> BindTask<T, T2>(this Option<T> option, Func<T, CancellationToken, ValueTask<Option<T2>>> bind, CancellationToken cancellationToken) =>
+        await option.Match(t => bind(t, cancellationToken), () => ValueTask.FromResult(Option<T2>.None));
+
+    public static async ValueTask<Option<T>> Or<T>(this Option<T> option, Func<ValueTask<Option<T>>> alternative) =>
+         await option.Match(t => ValueTask.FromResult(Option<T>.Some(t)), alternative);
+
+    public static async ValueTask<Option<T>> Or<T>(this ValueTask<Option<T>> optionTask, Func<ValueTask<Option<T>>> alternative)
+    {
+        var option = await optionTask;
+        return await option.Or(alternative);
+    }
 }
