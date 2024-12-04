@@ -1,0 +1,256 @@
+openapi: 3.0.0
+info:
+  title: EPizzas API
+  version: v1
+tags:
+  - name: Orders
+paths:
+  /orders/:
+    get:
+      operationId: List_list
+      description: List orders
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Orders.List.Response'
+      tags:
+        - Orders
+  /orders/{orderId}:
+    get:
+      operationId: GetById_get
+      description: Get order by ID
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/OrderId'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Orders.GetById.SuccessfulResponse'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - code
+                  - message
+                properties:
+                  code:
+                    type: string
+                    enum:
+                      - ResourceNotFound
+                  message:
+                    type: string
+                  details:
+                    type: array
+                    items: {}
+      tags:
+        - Orders
+    delete:
+      operationId: Cancel_cancel
+      description: Cancel order
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/OrderId'
+      responses:
+        '204':
+          description: 'There is no content to send for this request, but the headers may be useful. '
+      tags:
+        - Orders
+    put:
+      operationId: Create_put
+      description: Create order
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/OrderId'
+      responses:
+        '204':
+          description: There is no content to send for this request, but the headers may be useful.
+      tags:
+        - Orders
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Orders.Create.Request'
+security:
+  - BearerAuth: []
+components:
+  schemas:
+    ETag:
+      type: string
+      minLength: 1
+      description: The ETag.
+    NonEmptyString:
+      type: string
+      minLength: 1
+    OrderId:
+      type: string
+      minLength: 1
+      description: Order ID
+    OrderStatus:
+      anyOf:
+        - $ref: '#/components/schemas/OrderStatusCreated'
+        - $ref: '#/components/schemas/OrderStatusCancelled'
+      description: Order status
+    OrderStatusBase:
+      type: object
+      required:
+        - name
+        - date
+        - by
+      properties:
+        name:
+          $ref: '#/components/schemas/NonEmptyString'
+        date:
+          type: string
+          format: date-time
+        by:
+          $ref: '#/components/schemas/UserId'
+    OrderStatusCancelled:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          enum:
+            - Cancelled
+      allOf:
+        - $ref: '#/components/schemas/OrderStatusBase'
+    OrderStatusCreated:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          enum:
+            - Created
+      allOf:
+        - $ref: '#/components/schemas/OrderStatusBase'
+    Orders.Create.Request:
+      type: object
+      required:
+        - pizzas
+      properties:
+        pizzas:
+          type: array
+          items:
+            $ref: '#/components/schemas/Pizza'
+          minItems: 1
+    Orders.GetById.SuccessfulResponse:
+      type: object
+      required:
+        - eTag
+        - status
+        - pizzas
+      properties:
+        eTag:
+          $ref: '#/components/schemas/ETag'
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        pizzas:
+          type: array
+          items:
+            $ref: '#/components/schemas/Pizza'
+          minItems: 1
+    Orders.List.Response:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          type: array
+          items:
+            type: object
+            properties:
+              orderId:
+                $ref: '#/components/schemas/OrderId'
+              status:
+                $ref: '#/components/schemas/OrderStatus'
+              pizzas:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Pizza'
+                minItems: 1
+              eTag:
+                $ref: '#/components/schemas/ETag'
+            required:
+              - orderId
+              - status
+              - pizzas
+              - eTag
+          description: Current page of results.
+        nextPageLink:
+          type: string
+          format: uri
+          description: URL to get the next page of results.
+    Pizza:
+      type: object
+      required:
+        - size
+        - toppings
+      properties:
+        size:
+          $ref: '#/components/schemas/PizzaSize'
+        toppings:
+          type: array
+          items:
+            type: object
+            properties:
+              kind:
+                $ref: '#/components/schemas/PizzaToppingKind'
+              amount:
+                $ref: '#/components/schemas/PizzaToppingAmount'
+            required:
+              - kind
+              - amount
+      description: Pizza
+    PizzaSize:
+      type: string
+      enum:
+        - Small
+        - Medium
+        - Large
+      description: Pizza size
+    PizzaToppingAmount:
+      type: string
+      enum:
+        - Light
+        - Normal
+        - Extra
+      description: Pizza topping amount
+    PizzaToppingKind:
+      type: string
+      enum:
+        - Cheese
+        - Pepperoni
+        - Sausage
+      description: Pizza topping kind
+    UserId:
+      type: string
+      minLength: 1
+      description: User ID
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer

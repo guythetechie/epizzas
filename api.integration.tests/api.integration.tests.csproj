@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net9.0</TargetFramework>
+		<UserSecretsId>ce0d7f31-be13-492c-bf60-7523f4901231</UserSecretsId>
+		<EnableSdkContainerDebugging>True</EnableSdkContainerDebugging>
+		<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+		<AnalysisLevel>latest-all</AnalysisLevel>
+		<Nullable>enable</Nullable>
+		<InvariantGlobalization>true</InvariantGlobalization>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Aspire.Microsoft.Azure.Cosmos" Version="9.0.0" />
+	  <PackageReference Include="FluentAssertions" Version="7.0.0-alpha.5" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\common\src\common\common.csproj" />
+	</ItemGroup>
+
+</Project>
