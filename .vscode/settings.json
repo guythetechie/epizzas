@@ -1,3 +1,4 @@
 {
-    "dotnet.defaultSolution": "common/code/EPizzas.Common.sln"
+    "dotnet.defaultSolution": "common/code/EPizzas.Common.sln",
+    "editor.inlayHints.enabled": "offUnlessPressed"
 }
