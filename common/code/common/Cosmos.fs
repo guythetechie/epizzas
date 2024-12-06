@@ -1,8 +1,9 @@
 ﻿namespace common
 
 open Azure
-open System
 open Microsoft.Azure.Cosmos
+open OpenTelemetry.Trace
+open System
 open System.Net
 open FSharpPlus
 open FSharp.Control
@@ -198,3 +199,8 @@ module Cosmos =
                 let _ = response.EnsureSuccessStatusCode()
                 return Ok()
         }
+    
+    let configureOpenTelemetryTracing (tracing: TracerProviderBuilder) =
+        AppContext.SetSwitch("Azure.Experimental.EnableActivitySource", true)
+
+        tracing.AddSource("Azure.Cosmos.Operation") |> ignore

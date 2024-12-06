@@ -14,10 +14,18 @@ var bicep = builder.AddBicepTemplate("bicep", "main.bicep")
                    .WithParameter(AzureBicepResource.KnownParameters.Location)
                    .WithParameter(AzureBicepResource.KnownParameters.PrincipalId);
 
-var _ = builder.AddProject<Projects.api>("api")
+var api = builder.AddProject<Projects.api>("api")
+                 .WithEnvironment("COSMOS_ACCOUNT_ENDPOINT", bicep.GetOutput("cosmosAccountEndpoint"))
+                 .WithEnvironment("COSMOS_DATABASE_NAME", bicep.GetOutput("cosmosDatabaseName"))
+                 .WithEnvironment("COSMOS_ORDERS_CONTAINER_NAME", bicep.GetOutput("cosmosOrdersContainerName"));
+
+var _ = builder.AddProject<Projects.api_integration_tests>("api-integration-tests")
+               .WithEnvironment("API_CONNECTION_NAME", api.Resource.Name)
                .WithEnvironment("COSMOS_ACCOUNT_ENDPOINT", bicep.GetOutput("cosmosAccountEndpoint"))
                .WithEnvironment("COSMOS_DATABASE_NAME", bicep.GetOutput("cosmosDatabaseName"))
-               .WithEnvironment("COSMOS_ORDERS_CONTAINER_NAME", bicep.GetOutput("cosmosOrdersContainerName"));
+               .WithEnvironment("COSMOS_ORDERS_CONTAINER_NAME", bicep.GetOutput("cosmosOrdersContainerName"))
+               .WithReference(api)
+               .WaitFor(api);
 
 
 //var cosmosConnectionNameConfigurationKey = "ASPIRE_COSMOS_CONNECTION_NAME";

@@ -47,42 +47,45 @@ module PizzaSize =
         }
 
 module Pizza =
+    let serializeTopping kind amount =
+        JsonObject()
+        |> JsonObject.setProperty "kind" (PizzaToppingKind.serialize kind)
+        |> JsonObject.setProperty "amount" (PizzaToppingAmount.serialize amount)
+
+    let serializeToppings toppings =
+        toppings
+        |> Map.toSeq
+        |> Seq.map (uncurry serializeTopping)
+        |> JsonArray.fromSeq
+
     let serialize (pizza: Pizza) =
         JsonObject()
         |> JsonObject.setProperty "size" (PizzaSize.serialize pizza.Size)
-        |> JsonObject.setProperty
-            "toppings"
-            (pizza.Toppings
-             |> Map.toSeq
-             |> Seq.map (fun (kind, amount) ->
-                 JsonObject()
-                 |> JsonObject.setProperty "kind" (PizzaToppingKind.serialize kind)
-                 |> JsonObject.setProperty "amount" (PizzaToppingAmount.serialize amount))
-             |> JsonArray.fromSeq)
+        |> JsonObject.setProperty "toppings" (serializeToppings pizza.Toppings)
+
+    let deserializeTopping json =
+        monad {
+            let! jsonObject = JsonNode.asJsonObject json
+
+            let! kind =
+                jsonObject
+                |> JsonObject.getPropertyFromResult PizzaToppingKind.deserialize "kind"
+
+            and! amount =
+                jsonObject
+                |> JsonObject.getPropertyFromResult PizzaToppingAmount.deserialize "amount"
+
+            return kind, amount
+        }
+
+    let deserializeToppings json =
+        monad {
+            let! jsonArray = JsonNode.asJsonArray json
+            let! toppings = jsonArray |> List.ofSeq |> traverse deserializeTopping
+            return Map.ofSeq toppings
+        }
 
     let deserialize json =
-        let deserializeToppingKindAmount json =
-            monad {
-                let! jsonObject = JsonNode.asJsonObject json
-
-                let! kind =
-                    jsonObject
-                    |> JsonObject.getPropertyFromResult PizzaToppingKind.deserialize "kind"
-
-                and! amount =
-                    jsonObject
-                    |> JsonObject.getPropertyFromResult PizzaToppingAmount.deserialize "amount"
-
-                return kind, amount
-            }
-
-        let deserializeToppings json =
-            monad {
-                let! jsonArray = JsonNode.asJsonArray json
-                let! toppings = jsonArray |> List.ofSeq |> traverse deserializeToppingKindAmount
-                return Map.ofSeq toppings
-            }
-
         monad {
             let! jsonObject = JsonNode.asJsonObject json
 

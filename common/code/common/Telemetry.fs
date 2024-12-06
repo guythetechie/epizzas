@@ -2,8 +2,6 @@
 
 open Azure.Monitor.OpenTelemetry.AspNetCore
 open FSharpPlus
-open Microsoft.Extensions.Hosting
-open Microsoft.Extensions.DependencyInjection
 open System.Diagnostics
 open OpenTelemetry
 open OpenTelemetry.Metrics
@@ -19,13 +17,11 @@ module Activity =
         | NonNull activity -> activity.SetTag(key, value)
 
     let dispose (activity: Activity | null) =
-        match activity with
-        | Null -> ()
-        | NonNull activity -> activity.Dispose()
+        Option.ofObj activity |> iter _.Dispose()
 
 [<RequireQualifiedAccess>]
 module OpenTelemetry =
-    let private setDestination configuration (builder: IOpenTelemetryBuilder) =
+    let setDestination configuration (builder: IOpenTelemetryBuilder) =
         Configuration.getValue configuration "APPLICATION_INSIGHTS_CONNECTION_STRING"
         |> iter (fun _ -> match builder with
                           | :? OpenTelemetryBuilder as builder -> builder.UseAzureMonitor() |> ignore
@@ -37,19 +33,12 @@ module OpenTelemetry =
                           | :? OpenTelemetryBuilder as builder -> builder.UseOtlpExporter() |> ignore
                           | _ -> ())
 
-        builder
+    let configureMetrics (builder: MeterProviderBuilder) =
+        builder.AddAspNetCoreInstrumentation()
+               .AddRuntimeInstrumentation() |> ignore
 
-    let private configureMetrics (builder: IOpenTelemetryBuilder) =
-        builder.WithMetrics(fun metrics -> metrics.AddAspNetCoreInstrumentation()
-                                                  .AddRuntimeInstrumentation() |> ignore)
+    let setAlwaysOnSampler (builder: TracerProviderBuilder) =
+        builder.SetSampler(AlwaysOnSampler()) |> ignore
     
-    let private configureTracing (builder: IOpenTelemetryBuilder) =
-        builder.WithTracing(fun tracing -> tracing.SetSampler(new AlwaysOnSampler())
-                                                  .AddAspNetCoreInstrumentation() |> ignore)
-
-    let configureBuilder (builder: IHostApplicationBuilder) =
-        builder.Services.AddOpenTelemetry()
-        |> setDestination builder.Configuration
-        |> configureMetrics
-        |> configureTracing
-        |> ignore
+    let configureTracing (builder: TracerProviderBuilder) =
+        builder.AddAspNetCoreInstrumentation() |> ignore

@@ -58,14 +58,6 @@ module JsonResult =
 
     let failWithMessage message = JsonError.fromMessage message |> fail
 
-    // let replaceErrorWith f jsonResult =
-    //     match jsonResult with
-    //     | Failure e -> f e |> fail
-    //     | _ -> jsonResult
-
-    // let setErrorMessage message jsonResult =
-    //     replaceErrorWith (fun _ -> JsonError.fromString message) jsonResult
-
     let map f jsonResult =
         match jsonResult with
         | Success x -> succeed (f x)

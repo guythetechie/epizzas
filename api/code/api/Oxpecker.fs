@@ -8,6 +8,7 @@ open Microsoft.Extensions.Hosting
 open Microsoft.Extensions.DependencyInjection
 open System
 open System.Diagnostics
+open System.Text.Json.Nodes
 open FSharp.Control
 open Oxpecker
 open common
@@ -28,6 +29,8 @@ type private Env(application: WebApplication) =
 
     let getTimeProvider () =
         provider.GetRequiredService<TimeProvider>()
+
+    let generateCosmosId () = CosmosId.generate ()
 
     interface IFindCosmosOrder with
         member this.FindCosmosOrder orderId =
@@ -133,7 +136,10 @@ type private Env(application: WebApplication) =
 
                 let container = getOrdersContainer ()
                 let partitionKey = Cosmos.getOrderPartitionKey order
-                let json = Order.serialize order
+
+                let json =
+                    Order.serialize order
+                    |> JsonObject.setProperty "id" (generateCosmosId () |> CosmosId.toString |> JsonNode.op_Implicit)
 
                 let! result = Cosmos.createRecord container partitionKey json
 

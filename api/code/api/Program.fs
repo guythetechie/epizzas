@@ -2,10 +2,28 @@ module api.Program
 
 open Microsoft.AspNetCore.Builder
 open Microsoft.Extensions.Hosting
+open Microsoft.Extensions.DependencyInjection
+open OpenTelemetry.Metrics
+open OpenTelemetry.Trace
+open FSharpPlus
 open common
 
+let private configureMetrics (builder: MeterProviderBuilder) = OpenTelemetry.configureMetrics builder
+
+let private configureTracing (builder: TracerProviderBuilder) =
+    OpenTelemetry.configureTracing builder
+    Cosmos.configureOpenTelemetryTracing builder
+    OpenTelemetry.setAlwaysOnSampler builder
+
+let private configureTelemetry (builder: IHostApplicationBuilder) =
+    builder.Services.AddOpenTelemetry()
+    |> tap (OpenTelemetry.setDestination builder.Configuration)
+    |> _.WithMetrics(configureMetrics)
+    |> _.WithTracing(configureTracing)
+    |> ignore
+
 let private configureBuilder builder =
-    OpenTelemetry.configureBuilder builder
+    configureTelemetry builder
     HealthCheck.configureBuilder builder
     Oxpecker.configureBuilder builder
 

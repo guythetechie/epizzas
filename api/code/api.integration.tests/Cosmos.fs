@@ -1,5 +1,5 @@
 ﻿[<RequireQualifiedAccess>]
-module Cosmos
+module api.integration.tests.Cosmos
 
 open Aspire.Microsoft.Azure.Cosmos
 open Azure.Core

@@ -56,3 +56,7 @@ let getIntProperty propertyName jsonObject =
 let setProperty (propertyName: string) propertyValue (jsonObject: JsonObject) =
     jsonObject[propertyName] <- propertyValue :> JsonNode | null
     jsonObject
+
+let removeProperty (propertyName: string) (jsonObject: JsonObject) =
+    jsonObject.Remove(propertyName) |> ignore
+    jsonObject
