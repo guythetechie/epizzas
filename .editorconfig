@@ -1,5 +1,8 @@
 ﻿[*.cs]
 
+max_line_length = 120
+dotnet_sort_system_directives_first = false
+
 # CA1034: Nested types should not be visible
 dotnet_diagnostic.CA1034.severity = suggestion
 

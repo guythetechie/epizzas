@@ -1,6 +1,6 @@
 {
 	"name": "Dev container",
-	"image": "mcr.microsoft.com/devcontainers/base:jammy",
+	"image": "mcr.microsoft.com/devcontainers/base:latest",
 	"features": {
 		"ghcr.io/devcontainers/features/dotnet:2": {
 			"version": "9.0"
@@ -16,6 +16,7 @@
 		"ghcr.io/devcontainers/features/github-cli:1": {},
 		"ghcr.io/devcontainers/features/node:1": {}
 	},
+	"postCreateCommand": "npm i -g @typespec/compiler",
 	"customizations": {
 		"vscode": {
 			"extensions": [
