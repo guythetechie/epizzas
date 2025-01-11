@@ -1,5 +1,4 @@
-﻿[<RequireQualifiedAccess>]
-module api.integration.tests.Cosmos
+﻿namespace api.integration.tests
 
 open Aspire.Microsoft.Azure.Cosmos
 open Azure.Core
@@ -10,79 +9,110 @@ open Microsoft.Extensions.DependencyInjection
 open System
 open System.Text.Json
 open FSharpPlus
+open FSharp.Control
 open common
 
-let private configureCosmosSettings configuration provider (settings: MicrosoftAzureCosmosSettings) =
-    let getConfigurationValue = Configuration.getValue configuration
+type OrdersContainer =
+    | OrdersContainer of Container
 
-    let tryParseUri value =
-        match Uri.TryCreate(value, UriKind.Absolute) with
-        | true, uri -> Some uri
-        | _ -> None
+    static member toContainer(OrdersContainer container) = container
 
-    getConfigurationValue "COSMOS_ACCOUNT_ENDPOINT"
-    |> bind tryParseUri
-    |> iter (fun endpoint ->
-        settings.AccountEndpoint <- endpoint
-        let tokenCredential = ServiceProvider.getServiceOrThrow<TokenCredential> provider
-        settings.Credential <- tokenCredential)
+[<RequireQualifiedAccess>]
+module private Cosmos =
+    let private deleteOrder (OrdersContainer container) json =
+        let cosmosId, partitionKey, eTag =
+            monad {
+                let! id = Cosmos.getId json
+                let! partitionKey = PartitionKey.fromOrderJson json
+                let! eTag = Cosmos.getETag json
+                return id, partitionKey, eTag
+            }
+            |> JsonResult.throwIfFail
 
-    getConfigurationValue "COSMOS_CONNECTION_STRING"
-    |> Option.iter (fun connectionString -> settings.ConnectionString <- connectionString)
+        async {
+            match! Cosmos.deleteRecord container partitionKey cosmosId eTag with
+            | Ok() -> return ()
+            | Error error -> return failwith $"Failed to delete order. Error is '{error}'."
+        }
 
-let private configureClientOptions (options: CosmosClientOptions) =
-    options.EnableContentResponseOnWrite <- false
-    options.UseSystemTextJsonSerializerWithOptions <- JsonSerializerOptions.Web
 
-    options.CosmosClientTelemetryOptions <-
-        let options = CosmosClientTelemetryOptions()
-        options.DisableDistributedTracing <- false
-        options
+    let emptyContainer ordersContainer =
+        async {
+            let query =
+                CosmosQueryOptions.fromQueryString "SELECT c.id, c.orderId, c._etag FROM c"
 
-let private configureClient (builder: IHostApplicationBuilder) =
-    Azure.configureTokenCredential builder
+            let container = OrdersContainer.toContainer ordersContainer
 
-    let configuration = builder.Configuration
+            do!
+                Cosmos.getQueryResults container query
+                |> AsyncSeq.iterAsyncParallel (deleteOrder ordersContainer)
+        }
 
-    let connectionName =
-        Configuration.getValue configuration "COSMOS_CONNECTION_NAME"
-        |> Option.defaultValue String.Empty
+    let private configureCosmosSettings configuration provider (settings: MicrosoftAzureCosmosSettings) =
+        let getConfigurationValue = Configuration.getValue configuration
 
-    let configureCosmosSettings =
-        configureCosmosSettings configuration (builder.Services.BuildServiceProvider())
+        let tryParseUri value =
+            match Uri.TryCreate(value, UriKind.Absolute) with
+            | true, uri -> Some uri
+            | _ -> None
 
-    builder.AddAzureCosmosClient(connectionName, configureCosmosSettings, configureClientOptions)
+        getConfigurationValue "COSMOS_ACCOUNT_ENDPOINT"
+        |> bind tryParseUri
+        |> iter (fun endpoint ->
+            settings.AccountEndpoint <- endpoint
+            let tokenCredential = ServiceProvider.getServiceOrThrow<TokenCredential> provider
+            settings.Credential <- tokenCredential)
 
-let private getDatabase (provider: IServiceProvider) =
-    let client = provider.GetRequiredService<CosmosClient>()
-    let configuration = provider.GetRequiredService<IConfiguration>()
+        getConfigurationValue "COSMOS_CONNECTION_STRING"
+        |> Option.iter (fun connectionString -> settings.ConnectionString <- connectionString)
 
-    let databaseName =
-        Configuration.getValueOrThrow configuration "COSMOS_DATABASE_NAME"
+    let private configureClientOptions (options: CosmosClientOptions) =
+        options.EnableContentResponseOnWrite <- false
+        options.UseSystemTextJsonSerializerWithOptions <- JsonSerializerOptions.Web
 
-    client.GetDatabase(databaseName)
+        options.CosmosClientTelemetryOptions <-
+            let options = CosmosClientTelemetryOptions()
+            options.DisableDistributedTracing <- false
+            options
 
-let private configureDatabase builder =
-    configureClient builder
+    let private configureClient (builder: IHostApplicationBuilder) =
+        Azure.configureTokenCredential builder
 
-    ServiceCollection.tryAddSingleton builder.Services getDatabase
+        let configuration = builder.Configuration
 
-let ordersContainerIdentifier = "orders container"
+        let connectionName =
+            Configuration.getValue configuration "COSMOS_CONNECTION_NAME"
+            |> Option.defaultValue String.Empty
 
-let private getOrdersContainer (provider: IServiceProvider) =
-    let database = provider.GetRequiredService<Database>()
-    let configuration = provider.GetRequiredService<IConfiguration>()
+        let configureCosmosSettings =
+            configureCosmosSettings configuration (builder.Services.BuildServiceProvider())
 
-    let containerName =
-        Configuration.getValueOrThrow configuration "COSMOS_ORDERS_CONTAINER_NAME"
+        builder.AddAzureCosmosClient(connectionName, configureCosmosSettings, configureClientOptions)
 
-    database.GetContainer(containerName)
+    let private getDatabase (provider: IServiceProvider) =
+        let client = provider.GetRequiredService<CosmosClient>()
+        let configuration = provider.GetRequiredService<IConfiguration>()
 
-let configureOrdersContainer builder =
-    configureDatabase builder
+        let databaseName =
+            Configuration.getValueOrThrow configuration "COSMOS_DATABASE_NAME"
 
-    ServiceCollection.tryAddKeyedSingleton ordersContainerIdentifier builder.Services getOrdersContainer
+        client.GetDatabase(databaseName)
 
-let getOrderIdPartitionKey orderId = PartitionKey(OrderId.toString orderId)
+    let private configureDatabase builder =
+        configureClient builder
 
-let getOrderPartitionKey (order: Order) = getOrderIdPartitionKey order.Id
+        ServiceCollection.tryAddSingleton builder.Services getDatabase
+
+    let private getOrdersContainer (provider: IServiceProvider) =
+        let database = provider.GetRequiredService<Database>()
+        let configuration = provider.GetRequiredService<IConfiguration>()
+
+        let containerName =
+            Configuration.getValueOrThrow configuration "COSMOS_ORDERS_CONTAINER_NAME"
+
+        database.GetContainer(containerName) |> OrdersContainer
+
+    let configureOrdersContainerBuilder builder =
+        configureDatabase builder
+
+        ServiceCollection.tryAddSingleton builder.Services getOrdersContainer

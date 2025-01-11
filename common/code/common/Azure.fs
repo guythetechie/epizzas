@@ -1,12 +1,11 @@
 ﻿[<RequireQualifiedAccess>]
-module api.integration.tests.Azure
+module common.Azure
 
 open Azure.Core
 open Azure.Identity
 open Microsoft.Extensions.Configuration
-open FSharpPlus
-open common
 open Microsoft.Extensions.Hosting
+open FSharpPlus
 
 let private getAuthorityHost provider =
     ServiceProvider.getService<IConfiguration> provider

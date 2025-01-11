@@ -2,7 +2,6 @@
 
 open Microsoft.AspNetCore.Http
 open System
-open System.IO
 open System.Text.Json.Nodes
 open Oxpecker
 open FSharp.Control
@@ -10,20 +9,15 @@ open FSharpPlus
 open common
 open common.Serialization
 
-type IFindCosmosOrder =
-    abstract member FindCosmosOrder: OrderId -> Async<Option<Order * ETag>>
+type FindCosmosOrder = OrderId -> Async<Option<Order * ETag>>
 
-type IListCosmosOrders =
-    abstract member ListCosmosOrders: unit -> AsyncSeq<Order * ETag>
+type ListCosmosOrders = unit -> AsyncSeq<Order * ETag>
 
-type ICancelCosmosOrder =
-    abstract member CancelCosmosOrder: OrderId -> ETag -> Async<Result<unit, CosmosError>>
+type CancelCosmosOrder = OrderId -> ETag -> Async<Result<unit, CosmosError>>
 
-type ICreateCosmosOrder =
-    abstract member CreateCosmosOrder: Order -> Async<Result<unit, CosmosError>>
+type CreateCosmosOrder = Order -> Async<Result<unit, CosmosError>>
 
-type IGetCurrentTime =
-    abstract member GetCurrentTime: unit -> DateTimeOffset
+type GetCurrentTime = unit -> DateTimeOffset
 
 [<RequireQualifiedAccess>]
 module Orders =
@@ -39,9 +33,9 @@ module Orders =
 
                 OrderId.fromString orderIdString |> Result.mapError errorToResult
 
-            let private getOrder (env: #IFindCosmosOrder) orderId =
+            let private getOrder findCosmosOrder orderId =
                 async {
-                    match! env.FindCosmosOrder orderId with
+                    match! findCosmosOrder orderId with
                     | Some(order, eTag) -> return Ok(order, eTag)
                     | None ->
                         let message = $"Could not find order with id {OrderId.toString orderId}."
@@ -56,26 +50,23 @@ module Orders =
 
                 Results.Ok(json)
 
-            let private getResult env orderIdString =
+            let private getResult findCosmosOrder orderIdString =
                 apiOperation {
                     let! orderId = validateOrderId orderIdString
-                    let! order, eTag = getOrder env orderId
+                    let! order, eTag = getOrder findCosmosOrder orderId
                     return getSuccessfulResponse order eTag
                 }
 
-            let get env orderIdString : EndpointHandler =
-                fun context ->
-                    task {
-                        let! result = getResult env orderIdString |> Async.startAsTaskWithToken context.RequestAborted
+            let get env orderIdString =
+                async {
+                    let (findCosmosOrder) = env
 
-                        return! context.Write result
-                    }
+                    return! getResult findCosmosOrder orderIdString
+                }
+                |> EndpointHandler.fromResult
 
         [<RequireQualifiedAccess>]
         module ListOrders =
-            let private listOrders (env: #IListCosmosOrders) =
-                env.ListCosmosOrders() |> AsyncSeq.toListAsync
-
             let private getSuccessfulResponse orders =
                 let json =
                     let jsonArray =
@@ -89,19 +80,19 @@ module Orders =
 
                 Results.Ok(json)
 
-            let private getResult env =
+            let private getResult listCosmosOrders =
                 apiOperation {
-                    let! orders = listOrders env
+                    let! orders = listCosmosOrders () |> AsyncSeq.toListAsync
                     return getSuccessfulResponse orders
                 }
 
-            let get env : EndpointHandler =
-                fun context ->
-                    task {
-                        let! result = getResult env |> Async.startAsTaskWithToken context.RequestAborted
+            let get env =
+                async {
+                    let (listCosmosOrders) = env
 
-                        return! context.Write result
-                    }
+                    return! getResult listCosmosOrders
+                }
+                |> EndpointHandler.fromResult
 
         [<RequireQualifiedAccess>]
         module CancelOrder =
@@ -127,61 +118,64 @@ module Orders =
 
                     Results.BadRequest(json) |> Error
 
-            let private cancelOrder (env: #ICancelCosmosOrder) orderId eTag =
-                env.CancelCosmosOrder orderId eTag
-                |> map (
-                    Result.mapError (function
+            let private cancelOrder cancelCosmosOrder orderId eTag =
+                async {
+                    match! cancelCosmosOrder orderId eTag with
+                    | Ok() -> return Ok()
+                    | Error error ->
+                        match error with
                         | CosmosError.ETagMismatch ->
                             let message =
                                 $"Order with id {OrderId.toString orderId} has been modified since it was retrieved. Please refresh the order and try again."
 
                             let json = JsonObject() |> JsonObject.setProperty "message" (implicit message)
-                            Results.Json(json, statusCode = 412)
+                            return Results.Json(json, statusCode = 412) |> Error
                         | CosmosError.NotFound ->
                             let message = $"Could not find order with id {OrderId.toString orderId}."
                             let json = JsonObject() |> JsonObject.setProperty "message" (implicit message)
-                            Results.NotFound(json)
+                            return Results.NotFound(json) |> Error
                         | error ->
-                            failwith
-                                $"Received unexpected error '{error}' when cancelling order with id {OrderId.toString orderId}.")
-                )
+                            return
+                                failwith
+                                    $"Received unexpected error '{error}' when cancelling order with id {OrderId.toString orderId}."
+                }
 
             let private getSuccesfulResponse () = Results.NoContent()
 
-            let private getResult env context orderIdString =
+            let private getResult cancelCosmosOrder context orderIdString =
                 apiOperation {
                     let! orderId = validateOrderId orderIdString
                     and! eTag = validateEtag context
-                    do! cancelOrder env orderId eTag
+                    do! cancelOrder cancelCosmosOrder orderId eTag
                     return getSuccesfulResponse ()
                 }
 
-            let get env orderIdString : EndpointHandler =
-                fun context ->
-                    task {
-                        let! result =
-                            getResult env context orderIdString
-                            |> Async.startAsTaskWithToken context.RequestAborted
+            let get env orderIdString =
+                let f context =
+                    async {
+                        let (cancelOrder) = env
 
-                        return! context.Write result
+                        return! getResult cancelOrder context orderIdString
                     }
+
+                EndpointHandler.fromContext f
 
         [<RequireQualifiedAccess>]
         module CreateOrder =
-            let private validateOrder (env: #IGetCurrentTime) stream =
+            let private validateOrder getCurrentTime stream =
                 let errorToResult (error: JsonError) =
                     let json =
-                        JsonObject()
-                        |> JsonObject.setProperty "message" (JsonNode.op_Implicit error.Message)
+                        let message = JsonError.getMessage error
+                        JsonObject() |> JsonObject.setProperty "message" (implicit message)
 
                     let json =
-                        if Seq.isEmpty error.Details then
-                            json
-                        else
+                        match JsonError.getDetails error |> List.ofSeq with
+                        | [] -> json
+                        | details ->
                             json
                             |> JsonObject.setProperty
                                 "details"
-                                (error.Details |> Seq.map JsonNode.op_Implicit |> JsonArray.fromSeq)
+                                (details |> Seq.map JsonNode.op_Implicit |> JsonArray.fromSeq)
 
                     Results.BadRequest(json)
 
@@ -191,7 +185,7 @@ module Orders =
                     let status =
                         OrderStatus.Created
                             {| By = "system"
-                               Date = env.GetCurrentTime() |}
+                               Date = getCurrentTime () |}
 
                     return
                         nodeResult
@@ -202,9 +196,9 @@ module Orders =
                         |> Result.mapError errorToResult
                 }
 
-            let private createOrder (env: #ICreateCosmosOrder) order =
+            let private createOrder createCosmosOrder order =
                 async {
-                    match! env.CreateCosmosOrder order with
+                    match! createCosmosOrder order with
                     | Ok() -> return Ok()
                     | Error error ->
                         return
@@ -222,27 +216,31 @@ module Orders =
 
             let private getResult env stream =
                 apiOperation {
-                    let! order = validateOrder env stream
-                    do! createOrder env order
+                    let (getCurrentTime, createCosmosOrder) = env
+
+                    let! order = validateOrder getCurrentTime stream
+                    do! createOrder createCosmosOrder order
                     return getSuccessfulResponse ()
                 }
 
-            let get env : EndpointHandler =
-                fun context ->
-                    task {
-                        let! result =
-                            getResult env context.Request.Body
-                            |> Async.startAsTaskWithToken context.RequestAborted
+            let get env =
+                let f (context: HttpContext) = getResult env context.Request.Body
 
-                        return! context.Write result
-                    }
+                EndpointHandler.fromContext f
 
 
     let getEndpoint env =
+        let (findCosmosOrder: FindCosmosOrder,
+             listCosmosOrders: ListCosmosOrders,
+             cancelCosmosOrder: CancelCosmosOrder,
+             createCosmosOrder: CreateCosmosOrder,
+             getCurrentTime: GetCurrentTime) =
+            env
+
         subRoute
             "/orders"
             [ GET
-                  [ routef "/{%s}" (Handlers.GetOrder.get env)
-                    route "/" (Handlers.ListOrders.get env) ]
-              DELETE [ routef "/{%s}" (Handlers.CancelOrder.get env) ]
-              POST [ route "/" (Handlers.CreateOrder.get env) ] ]
+                  [ routef "/{%s}" (Handlers.GetOrder.get findCosmosOrder)
+                    route "/" (Handlers.ListOrders.get listCosmosOrders) ]
+              DELETE [ routef "/{%s}" (Handlers.CancelOrder.get cancelCosmosOrder) ]
+              POST [ route "/" (Handlers.CreateOrder.get (getCurrentTime, createCosmosOrder)) ] ]

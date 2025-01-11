@@ -26,7 +26,7 @@ type JsonResultAssertions =
         t.Subject
         |> JsonResult.map (fun a -> AndDerived(t, a))
         |> JsonResult.defaultWith (fun error ->
-            t.With("But was", "Failure").With("Error message", error.Message).Fail(because))
+            t.With("But was", "Failure").With("Error message", JsonError.getMessage error).Fail(because))
 
     [<Extension>]
     static member BeFailure<'a>(t: Testable<JsonResult<'a>>, ?because) : AndDerived<JsonResult<'a>, JsonError> =

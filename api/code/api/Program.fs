@@ -29,16 +29,16 @@ let private configureBuilder builder =
 
 let private configureApplication (application: WebApplication) =
     let _ = application.UseHttpsRedirection()
-    Oxpecker.configureApplication application
+    Oxpecker.configureApplication application |> ignore
 
 [<EntryPoint>]
 let main args =
     let builder = WebApplication.CreateBuilder(args)
     configureBuilder builder
 
-    let application = builder.Build()
-    let _ = configureApplication application
-
+    use application = builder.Build()
+    configureApplication application
+    
     application.Run()
 
     0 // Exit code

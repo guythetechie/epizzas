@@ -32,122 +32,117 @@ type private Env(application: WebApplication) =
 
     let generateCosmosId () = CosmosId.generate ()
 
-    interface IFindCosmosOrder with
-        member this.FindCosmosOrder orderId =
-            async {
-                let activitySource = getActivitySource ()
+    member _.FindCosmosOrder orderId =
+        async {
+            let activitySource = getActivitySource ()
 
-                use _ =
-                    Activity.fromSource "cosmos.find_order" activitySource
-                    |> Activity.setTag "order_id" (OrderId.toString orderId)
+            use _ =
+                Activity.fromSource "cosmos.find_order" activitySource
+                |> Activity.setTag "order_id" (OrderId.toString orderId)
 
-                let container = getOrdersContainer ()
+            let container = getOrdersContainer ()
 
-                let query =
-                    CosmosQueryOptions.fromQueryString
-                        """
+            let query =
+                CosmosQueryOptions.fromQueryString
+                    """
                         SELECT c.orderId, c.status, c.pizzas, c._etag
                         FROM c
                         WHERE c.orderId = @orderId
                         """
-                    |> CosmosQueryOptions.setQueryParameter "@orderId" (OrderId.toString orderId)
+                |> CosmosQueryOptions.setQueryParameter "@orderId" (OrderId.toString orderId)
 
-                let! results = Cosmos.getQueryResults container query |> AsyncSeq.toListAsync
+            let! results = Cosmos.getQueryResults container query |> AsyncSeq.toListAsync
 
-                match results with
-                | [] -> return None
-                | [ json ] ->
-                    let order = Order.deserialize json |> JsonResult.throwIfFail
-                    let eTag = Cosmos.getETag json |> JsonResult.throwIfFail
-                    return Some(order, eTag)
-                | _ -> return failwith $"Found more than one order with id {OrderId.toString orderId}."
-            }
+            match results with
+            | [] -> return None
+            | [ json ] ->
+                let order = Order.deserialize json |> JsonResult.throwIfFail
+                let eTag = Cosmos.getETag json |> JsonResult.throwIfFail
+                return Some(order, eTag)
+            | _ -> return failwith $"Found more than one order with id {OrderId.toString orderId}."
+        }
 
-    interface IListCosmosOrders with
-        member this.ListCosmosOrders() =
-            asyncSeq {
-                let activitySource = getActivitySource ()
+    member _.ListCosmosOrders() =
+        asyncSeq {
+            let activitySource = getActivitySource ()
 
-                use _ = Activity.fromSource "cosmos.list_orders" activitySource
+            use _ = Activity.fromSource "cosmos.list_orders" activitySource
 
-                let container = getOrdersContainer ()
+            let container = getOrdersContainer ()
 
-                let query =
-                    CosmosQueryOptions.fromQueryString
-                        """
+            let query =
+                CosmosQueryOptions.fromQueryString
+                    """
                         SELECT c.orderId, c.status, c.pizzas, c._etag
                         FROM c
                         """
 
-                yield!
-                    Cosmos.getQueryResults container query
-                    |> AsyncSeq.map (fun json ->
-                        let order = Order.deserialize json |> JsonResult.throwIfFail
-                        let eTag = Cosmos.getETag json |> JsonResult.throwIfFail
-                        order, eTag)
-            }
+            yield!
+                Cosmos.getQueryResults container query
+                |> AsyncSeq.map (fun json ->
+                    let order = Order.deserialize json |> JsonResult.throwIfFail
+                    let eTag = Cosmos.getETag json |> JsonResult.throwIfFail
+                    order, eTag)
+        }
 
-    interface ICancelCosmosOrder with
-        member this.CancelCosmosOrder orderId eTag =
-            async {
-                let activitySource = getActivitySource ()
+    member _.CancelCosmosOrder orderId eTag =
+        async {
+            let activitySource = getActivitySource ()
 
-                use _ =
-                    Activity.fromSource "cosmos.cancel_order" activitySource
-                    |> Activity.setTag "order_id" (OrderId.toString orderId)
+            use _ =
+                Activity.fromSource "cosmos.cancel_order" activitySource
+                |> Activity.setTag "order_id" (OrderId.toString orderId)
 
-                let container = getOrdersContainer ()
+            let container = getOrdersContainer ()
 
-                let query =
-                    CosmosQueryOptions.fromQueryString
-                        """
+            let query =
+                CosmosQueryOptions.fromQueryString
+                    """
                             SELECT c.id
                             FROM c
                             WHERE c.orderId = @orderId
                             """
-                    |> CosmosQueryOptions.setQueryParameter "@orderId" (OrderId.toString orderId)
+                |> CosmosQueryOptions.setQueryParameter "@orderId" (OrderId.toString orderId)
 
-                let! results = Cosmos.getQueryResults container query |> AsyncSeq.toListAsync
+            let! results = Cosmos.getQueryResults container query |> AsyncSeq.toListAsync
 
-                match results with
-                | [] -> return Error CosmosError.NotFound
-                | [ json ] ->
-                    let id = Cosmos.getId json |> JsonResult.throwIfFail
-                    let partitionKey = Cosmos.getOrderIdPartitionKey orderId
+            match results with
+            | [] -> return Error CosmosError.NotFound
+            | [ json ] ->
+                let id = Cosmos.getId json |> JsonResult.throwIfFail
+                let partitionKey = Cosmos.getOrderIdPartitionKey orderId
 
-                    let status =
-                        OrderStatus.Cancelled
-                            {| By = "system"
-                               Date = getTimeProvider().GetUtcNow() |}
+                let status =
+                    OrderStatus.Cancelled
+                        {| By = "system"
+                           Date = getTimeProvider().GetUtcNow() |}
 
-                    let patchOperation =
-                        Seq.singleton (PatchOperation.Set("/status", OrderStatus.serialize status))
+                let patchOperation =
+                    Seq.singleton (PatchOperation.Set("/status", OrderStatus.serialize status))
 
-                    return! Cosmos.patchRecord container partitionKey id eTag patchOperation
-                | _ -> return failwith $"Found more than one order with id {OrderId.toString orderId}."
-            }
+                return! Cosmos.patchRecord container partitionKey id eTag patchOperation
+            | _ -> return failwith $"Found more than one order with id {OrderId.toString orderId}."
+        }
 
-    interface ICreateCosmosOrder with
-        member this.CreateCosmosOrder order =
-            async {
-                let activitySource = getActivitySource ()
+    member _.CreateCosmosOrder order =
+        async {
+            let activitySource = getActivitySource ()
 
-                use _ = Activity.fromSource "cosmos.create_order" activitySource
+            use _ = Activity.fromSource "cosmos.create_order" activitySource
 
-                let container = getOrdersContainer ()
-                let partitionKey = Cosmos.getOrderPartitionKey order
+            let container = getOrdersContainer ()
+            let partitionKey = Cosmos.getOrderPartitionKey order
 
-                let json =
-                    Order.serialize order
-                    |> JsonObject.setProperty "id" (generateCosmosId () |> CosmosId.toString |> JsonNode.op_Implicit)
+            let json =
+                Order.serialize order
+                |> JsonObject.setProperty "id" (generateCosmosId () |> CosmosId.toString |> JsonNode.op_Implicit)
 
-                let! result = Cosmos.createRecord container partitionKey json
+            let! result = Cosmos.createRecord container partitionKey json
 
-                return result
-            }
+            return result
+        }
 
-    interface IGetCurrentTime with
-        member this.GetCurrentTime() : DateTimeOffset = getTimeProvider().GetUtcNow()
+    member _.GetCurrentTime() : DateTimeOffset = getTimeProvider().GetUtcNow()
 
     static member private getTimeProvider(provider: IServiceProvider) = TimeProvider.System
 
@@ -164,7 +159,17 @@ let configureBuilder builder =
 
 let configureApplication application =
     let env = Env(application)
-    let endpoints = subRoute "/v1" [ Orders.getEndpoint env ]
+
+    let endpoints =
+        subRoute
+            "/v1"
+            [ Orders.getEndpoint (
+                  env.FindCosmosOrder,
+                  env.ListCosmosOrders,
+                  env.CancelCosmosOrder,
+                  env.CreateCosmosOrder,
+                  env.GetCurrentTime
+              ) ]
 
     let _ = application.UseRouting()
     application.UseOxpecker(endpoints)

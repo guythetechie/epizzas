@@ -1,6 +1,5 @@
 ﻿namespace common
 
-open Azure
 open Microsoft.Azure.Cosmos
 open OpenTelemetry.Trace
 open System
@@ -199,8 +198,24 @@ module Cosmos =
                 let _ = response.EnsureSuccessStatusCode()
                 return Ok()
         }
-    
+
     let configureOpenTelemetryTracing (tracing: TracerProviderBuilder) =
         AppContext.SetSwitch("Azure.Experimental.EnableActivitySource", true)
 
         tracing.AddSource("Azure.Cosmos.Operation") |> ignore
+
+[<RequireQualifiedAccess>]
+module PartitionKey =
+    let fromOrderId orderId = PartitionKey(OrderId.toString orderId)
+
+    let fromOrder (order: Order) = fromOrderId order.Id
+
+    let fromOrderJson json =
+        monad {
+            let! jsonObject = JsonNode.asJsonObject json
+            let! orderId = JsonObject.getStringProperty "orderId" jsonObject
+
+            match OrderId.fromString orderId with
+            | Ok orderId -> return fromOrderId orderId
+            | Error error -> return! JsonResult.failWithMessage error
+        }

@@ -16,6 +16,12 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "api", "api\code\api\api.fsp
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "api.integration.tests", "api\code\api.integration.tests\api.integration.tests.fsproj", "{8A45A07B-3AE0-4C0A-A2ED-6E48D677081E}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "portal", "portal\portal.fsproj", "{F7CEC9DC-DC50-4923-9CB6-73A75EC2804E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "portal", "portal\portal.csproj", "{65646C74-2F8D-438B-9025-F86A600B9287}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "portal.fluent", "portal.fluent\portal.fluent.csproj", "{A44B3E44-3346-4F08-868E-A785D2D70FDD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -38,9 +44,24 @@ Global
 		{8A45A07B-3AE0-4C0A-A2ED-6E48D677081E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8A45A07B-3AE0-4C0A-A2ED-6E48D677081E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8A45A07B-3AE0-4C0A-A2ED-6E48D677081E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F7CEC9DC-DC50-4923-9CB6-73A75EC2804E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F7CEC9DC-DC50-4923-9CB6-73A75EC2804E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F7CEC9DC-DC50-4923-9CB6-73A75EC2804E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F7CEC9DC-DC50-4923-9CB6-73A75EC2804E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{65646C74-2F8D-438B-9025-F86A600B9287}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{65646C74-2F8D-438B-9025-F86A600B9287}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{65646C74-2F8D-438B-9025-F86A600B9287}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{65646C74-2F8D-438B-9025-F86A600B9287}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A44B3E44-3346-4F08-868E-A785D2D70FDD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A44B3E44-3346-4F08-868E-A785D2D70FDD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A44B3E44-3346-4F08-868E-A785D2D70FDD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A44B3E44-3346-4F08-868E-A785D2D70FDD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{F7CEC9DC-DC50-4923-9CB6-73A75EC2804E} = {A5E745FA-B6D2-449A-A28F-357FD997EDDB}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {A8001DEC-8BE7-4635-AB1D-213FF905E802}

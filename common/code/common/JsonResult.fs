@@ -1,46 +1,90 @@
 ﻿namespace common
 
-open FSharpPlus
 open System
 open System.Text.Json
 
 type JsonError =
-    { Message: string; Details: string seq }
+    | NonExceptional of
+        {| Message: string
+           Details: string seq |}
+    | Exceptional of JsonException
 
 [<RequireQualifiedAccess>]
 module JsonError =
     let private multipleErrorsMessage =
         "Multiple errors have occurred, see details for more information."
 
+    let getMessage jsonError =
+        match jsonError with
+        | JsonError.NonExceptional nonExceptional -> nonExceptional.Message
+        | JsonError.Exceptional jsonException -> jsonException.Message
+
+    let setMessage message jsonError =
+        match jsonError with
+        | JsonError.NonExceptional nonExceptional ->
+            JsonError.NonExceptional
+                {| Message = message
+                   Details = nonExceptional.Details |}
+        | JsonError.Exceptional jsonException ->
+            JsonError.Exceptional(JsonException(message, jsonException.InnerException))
+
     let fromMessage message =
-        { JsonError.Message = message
-          Details = Seq.empty }
+        JsonError.NonExceptional
+            {| Message = message
+               Details = Seq.empty |}
 
     let fromMessages messages =
         match List.ofSeq messages with
         | [] -> failwith "Messages must not be empty."
         | [ message ] -> fromMessage message
         | messages ->
-            { Message = multipleErrorsMessage
-              Details = messages }
+            JsonError.NonExceptional
+                {| Message = multipleErrorsMessage
+                   Details = messages |}
+
+    let fromException jsonException = JsonError.Exceptional jsonException
+
+    let toException jsonError =
+        match jsonError with
+        | JsonError.NonExceptional nonExceptional ->
+            let innerExceptions =
+                nonExceptional.Details
+                |> Seq.map (fun message -> JsonException(message) :> exn)
+                |> AggregateException
+
+            JsonException(nonExceptional.Message, innerExceptions)
+        | JsonError.Exceptional jsonException -> jsonException
+
+    let getDetails error =
+        match error with
+        | JsonError.NonExceptional nonExceptional ->
+            match List.ofSeq nonExceptional.Details with
+            | [] -> Seq.singleton nonExceptional.Message
+            | details -> details
+        | JsonError.Exceptional jsonException ->
+            match jsonException.InnerException with
+            | :? AggregateException as aggregateException ->
+                aggregateException.Flatten() |> _.InnerExceptions |> Seq.map _.Message
+            | _ -> Seq.singleton jsonException.Message
 
     let addError newError existingError =
-        { existingError with
-            Message = multipleErrorsMessage
-            Details =
-                let existingDetails =
-                    if Seq.isEmpty existingError.Details then
-                        Seq.singleton existingError.Message
-                    else
-                        existingError.Details
+        match existingError, newError with
+        | JsonError.NonExceptional left, JsonError.NonExceptional right ->
+            JsonError.NonExceptional
+                {| Message = multipleErrorsMessage
+                   Details = Seq.append left.Details right.Details |}
+        | JsonError.NonExceptional left, JsonError.Exceptional right ->
+            JsonError.NonExceptional
+                {| Message = multipleErrorsMessage
+                   Details = Seq.append left.Details [ right.Message ] |}
+        | JsonError.Exceptional left, _ ->
+            let inner =
+                getDetails newError
+                |> Seq.append (getDetails existingError)
+                |> Seq.map (fun message -> JsonException(message) :> exn)
+                |> AggregateException
 
-                let newDetails =
-                    if Seq.isEmpty newError.Details then
-                        Seq.singleton newError.Message
-                    else
-                        newError.Details
-
-                Seq.append existingDetails newDetails }
+            JsonException(multipleErrorsMessage, inner) |> fromException
 
 type JsonError with
     // Semigroup
@@ -57,6 +101,9 @@ module JsonResult =
     let fail e = Failure e
 
     let failWithMessage message = JsonError.fromMessage message |> fail
+
+    let failWithException jsonException =
+        JsonError.fromException jsonException |> fail
 
     let map f jsonResult =
         match jsonResult with
@@ -86,7 +133,12 @@ module JsonResult =
         | Failure jsonError -> f jsonError
 
     let throwIfFail jsonResult =
-        jsonResult |> defaultWith (fun error -> failwith error.Message)
+        jsonResult |> defaultWith (JsonError.toException >> raise)
+
+    let fromResult result =
+        match result with
+        | Ok x -> Success x
+        | Error e -> failWithMessage e
 
     let toResult jsonResult =
         match jsonResult with
@@ -250,10 +302,12 @@ type JsonResult<'a> with
         | Success _, Success _, Failure e3 -> JsonResult.fail e3
 
     // Monad
-    static member (>>=)(x, f) =
+    static member Bind(x, f) =
         match x with
         | Success x -> f x
         | Failure e -> JsonResult.fail e
+
+    static member (>>=)(x, f) = JsonResult<'a>.Bind(x, f)
 
     static member Join x =
         match x with

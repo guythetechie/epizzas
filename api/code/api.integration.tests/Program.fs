@@ -7,8 +7,10 @@ open OpenTelemetry.Metrics
 open OpenTelemetry.Trace
 open System
 open System.Diagnostics
+open System.Net.Http
 open FSharpPlus
 open common
+open Microsoft.Extensions.Configuration
 
 let private getActivitySource (provider: IServiceProvider) =
     new ActivitySource("api.integration.tests")
@@ -17,9 +19,8 @@ let private configureActivitySource (builder: IHostApplicationBuilder) =
     ServiceCollection.tryAddSingleton builder.Services getActivitySource
 
 let private configureMetrics (builder: MeterProviderBuilder) =
-    builder
-    |> tap OpenTelemetry.configureMetrics |> ignore
-    //|> Http.configureOpenTelemetryMetrics
+    builder |> tap OpenTelemetry.configureMetrics |> ignore
+//|> Http.configureOpenTelemetryMetrics
 
 let private configureTracing (builder: TracerProviderBuilder) =
     builder
@@ -47,7 +48,8 @@ let private configureLogger (builder: IHostApplicationBuilder) =
 let private configureBuilder builder =
     configureTelemetry builder
     configureLogger builder
-    Orders.configureBuilder builder
+    Cosmos.configureOrdersContainerBuilder builder
+    Api.configureHttpClientBuilder builder
 
 let private startHost (host: IHost) =
     async {
@@ -64,6 +66,15 @@ let private run (host: IHost) =
         let activitySource = ServiceProvider.getServiceOrThrow<ActivitySource> host.Services
         let logger = ServiceProvider.getServiceOrThrow<ILogger> host.Services
 
+        let ordersContainer =
+            ServiceProvider.getServiceOrThrow<OrdersContainer> host.Services
+
+        let getApiClient () =
+            let configuration = ServiceProvider.getServiceOrThrow<IConfiguration> host.Services
+            let connectionName = Api.getConnectionName configuration
+            let factory = ServiceProvider.getServiceOrThrow<IHttpClientFactory> host.Services
+            factory.CreateClient(connectionName)
+
         try
             try
                 use _ = Activity.fromSource "test" activitySource
@@ -72,7 +83,7 @@ let private run (host: IHost) =
                 do! startHost host
 
                 logger.LogInformation "Running order tests..."
-                do! Orders.test host.Services
+                do! Orders.test (ordersContainer, getApiClient)
             with error ->
                 logger.LogCritical(error, "Application failed.")
                 Environment.ExitCode <- -1

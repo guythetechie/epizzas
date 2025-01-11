@@ -3,8 +3,6 @@
 open Microsoft.AspNetCore.Http
 open FSharpPlus
 
-//type ApiOperation<'a> = private ApiOperation of Async<Result<'a, IResult>>
-
 type ApiOperationBuilder() =
     member _.Bind(x: Async<Result<'a, IResult>>, f: 'a -> Async<Result<'b, IResult>>) : Async<Result<'b, IResult>> =
         async {

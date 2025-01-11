@@ -3,14 +3,9 @@ module api.integration.tests.Orders
 
 open Bogus
 open Bogus.DataSets
-open Microsoft.Azure.Cosmos
-open Microsoft.Extensions.DependencyInjection
-open Microsoft.Extensions.Logging
 open System
-open System.Diagnostics
 open System.Net
 open System.Net.Http
-open System.Net.Http.Json
 open System.Text.Json.Nodes
 open FsCheck
 open FsCheck.FSharp
@@ -242,47 +237,6 @@ module private Check =
         let config = Config.QuickThrowOnFailure
         fromGenWithConfig config gen f
 
-let configureBuilder builder =
-    Cosmos.configureOrdersContainer builder
-    Http.configureBuilder builder
-
-let private deleteOrder container json =
-    let cosmosId, partitionKey, eTag =
-        monad {
-            let! id = Cosmos.getId json
-            let! partitionKey = json |> JsonObject.getStringProperty "orderId" |> map PartitionKey
-            let! eTag = Cosmos.getETag json
-            return id, partitionKey, eTag
-        }
-        |> JsonResult.throwIfFail
-
-    async {
-        match! Cosmos.deleteRecord container partitionKey cosmosId eTag with
-        | Ok() -> return ()
-        | Error error -> return failwith $"Failed to delete order. Error is '{error}'."
-    }
-
-
-let private emptyContainer activitySource container =
-    async {
-        use _ = Activity.fromSource "empty_container" activitySource
-
-        let query =
-            CosmosQueryOptions.fromQueryString "SELECT c.id, c.orderId, c._etag FROM c"
-
-        do!
-            Cosmos.getQueryResults container query
-            |> AsyncSeq.iterAsyncParallel (deleteOrder container)
-    }
-
-let private getClientResponse (clientFactory: IHttpClientFactory) relativeUriString f =
-    async {
-        use client = clientFactory.CreateClient(Http.apiIdentifier)
-        let uri = Uri(relativeUriString, UriKind.Relative)
-        let! cancellationToken = Async.CancellationToken
-        return! f client uri cancellationToken |> Async.AwaitTask
-    }
-
 let private getResponseJson (response: HttpResponseMessage) =
     async {
         let! cancellationToken = Async.CancellationToken
@@ -290,17 +244,14 @@ let private getResponseJson (response: HttpResponseMessage) =
         return! JsonNode.fromStream stream
     }
 
-let private sendGetRequest clientFactory relativeUriString =
-    getClientResponse clientFactory relativeUriString (fun client uri cancellationToken ->
-        client.GetAsync(uri, cancellationToken))
-
-let private listOrders clientFactory =
+let private ``Check that there are no orders`` getClient =
     async {
-        use! response = sendGetRequest clientFactory "/v1/orders"
+        use! response = Api.listOrders getClient
+        response.Should().HaveStatusCode(HttpStatusCode.OK) |> ignore
 
         let! result = getResponseJson response
 
-        return
+        let orders =
             monad {
                 let! json = result
                 let! jsonObject = JsonNode.asJsonObject json
@@ -309,78 +260,56 @@ let private listOrders clientFactory =
                 return orders
             }
             |> JsonResult.throwIfFail
-    }
 
-let private createOrder clientFactory orderJson =
-    async {
-        use content = JsonContent.Create(orderJson)
-
-        return!
-            getClientResponse clientFactory "/v1/orders" (fun client uri cancellationToken ->
-                client.PostAsync(uri, content, cancellationToken))
-    }
-
-let private ``Check that there are no orders`` activitySource clientFactory =
-    async {
-        use _ = Activity.fromSource "check_no_orders" activitySource
-        let! orders = listOrders clientFactory
         orders.Should().BeEmpty() |> ignore
     }
 
-let private ``Check that invalid JSON cannot be created`` activitySource clientFactory =
+let private ``Check that invalid JSON order cannot be created`` getClient =
+    Check.fromGenWithRuns 10 Gen.invalidOrderIdJson (fun json ->
+        async {
+            use! response = Api.createOrder getClient json
+            response.Should().HaveStatusCode(HttpStatusCode.BadRequest) |> ignore
+        }
+        |> Async.RunSynchronously)
+
+let private ``Check that order does not exist`` getClient orderId =
     async {
-        use _ = Activity.fromSource "check_invalid_json_cannot_be_created" activitySource
-
-        Check.fromGenWithRuns 10 Gen.invalidOrderIdJson (fun json ->
-            async {
-                use! response = createOrder clientFactory json
-                response.Should().HaveStatusCode(HttpStatusCode.BadRequest) |> ignore
-            }
-            |> Async.RunSynchronously)
-    }
-
-let private ``Check that order does not exist`` activitySource clientFactory orderId =
-    async {
-        use _ =
-            Activity.fromSource "check_order_does_not_exist" activitySource
-            |> Activity.setTag "orderId" (OrderId.toString orderId)
-
-        use! response = sendGetRequest clientFactory $"/v1/orders/{OrderId.toString orderId}"
+        use! response = Api.getOrder getClient (OrderId.toString orderId)
         response.Should().HaveStatusCode(HttpStatusCode.NotFound) |> ignore
     }
 
-let private testOrder activitySource clientFactory (logger: ILogger) (order: Order) =
+let private ``Check that order can be created`` getClient order =
     async {
-        use _ =
-            Activity.fromSource "test_order" activitySource
-            |> Activity.setTag "orderId" (OrderId.toString order.Id)
-
-        logger.LogInformation("Testing order {orderId}", OrderId.toString order.Id)
-
-        do! ``Check that order does not exist`` activitySource clientFactory order.Id
+        let orderJson = Order.serialize order
+        use! response = Api.createOrder getClient orderJson
+        response.Should().BeSuccessful() |> ignore
+        
+        use! response = Api.getOrder getClient (OrderId.toString order.Id)
+        response.Should().BeSuccessful() |> ignore
+        let! responseJsonResult = getResponseJson  response
+        responseJsonResult.Should().BeSuccess() |> ignore
     }
 
-let test (provider: IServiceProvider) =
+let private testOrder getClient (order: Order) =
     async {
-        let container =
-            provider.GetRequiredKeyedService<Container>(Cosmos.ordersContainerIdentifier)
+        do! ``Check that order does not exist`` getClient order.Id
+        do! ``Check that order can be created`` getClient order
+    }
 
-        let clientFactory = ServiceProvider.getServiceOrThrow<IHttpClientFactory> provider
+let private testOrders getClient =
+    Check.fromGenWithRuns 10 Gen.order (testOrder getClient >> Async.RunSynchronously)
 
-        let activitySource = ServiceProvider.getServiceOrThrow<ActivitySource> provider
-        let logger = ServiceProvider.getServiceOrThrow<ILogger> provider
+let test env =
+    async {
+        let container, getClient = env
 
-        use _ = activitySource.StartActivity("orders") // Activity.fromSource "orders" activitySource
+        do! Cosmos.emptyContainer container
 
-        logger.LogInformation("Testing orders...")
+        do! ``Check that there are no orders`` getClient
 
-        do! emptyContainer activitySource container
+        ``Check that invalid JSON order cannot be created`` getClient
 
-        do! ``Check that there are no orders`` activitySource clientFactory
+        do testOrders getClient
 
-        do! ``Check that invalid JSON cannot be created`` activitySource clientFactory
-
-        Check.fromGenWithRuns 10 Gen.order (testOrder activitySource clientFactory logger >> Async.RunSynchronously)
-
-        do! emptyContainer activitySource container
+        do! Cosmos.emptyContainer container
     }

@@ -2,6 +2,7 @@
 module common.JsonNode
 
 open System
+open System.IO
 open System.Text.Json
 open System.Text.Json.Nodes
 
@@ -23,7 +24,7 @@ let asJsonValue (node: JsonNode | null) =
     | Null -> JsonResult.failWithMessage "JSON node is null."
     | _ -> JsonResult.failWithMessage "JSON node is not a JSON value."
 
-let fromStream (stream: System.IO.Stream | null) =
+let fromStream (stream: Stream | null) =
     async {
         let! cancellationToken = Async.CancellationToken
 

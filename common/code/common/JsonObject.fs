@@ -21,8 +21,13 @@ let getOptionalProperty propertyName jsonObject =
     |> JsonResult.defaultWith (fun _ -> Option.None)
 
 let getPropertyFromResult getPropertyResult propertyName jsonObject =
+    let updateErrorMessage error =
+        let currentMessage = JsonError.getMessage error
+        let newMessage = $"Property '{propertyName}' is invalid. {currentMessage}"
+        JsonError.setMessage newMessage error
+
     getProperty propertyName jsonObject
-    |> bind (getPropertyResult >> JsonResult.mapError (fun error -> { error with Message = $"Property '{propertyName}' is invalid. {error.Message}" }))
+    |> bind (getPropertyResult >> JsonResult.mapError updateErrorMessage)
 
 let getJsonObjectProperty propertyName jsonObject =
     getPropertyFromResult JsonNode.asJsonObject propertyName jsonObject
@@ -38,7 +43,9 @@ let getStringProperty propertyName jsonObject =
     getPropertyFromResult getPropertyResult propertyName jsonObject
 
 let getAbsoluteUriProperty propertyName jsonObject =
-    let getPropertyResult = JsonNode.asJsonValue >> JsonResult.bind JsonValue.asAbsoluteUri
+    let getPropertyResult =
+        JsonNode.asJsonValue >> JsonResult.bind JsonValue.asAbsoluteUri
+
     getPropertyFromResult getPropertyResult propertyName jsonObject
 
 let getGuidProperty propertyName jsonObject =
@@ -53,8 +60,8 @@ let getIntProperty propertyName jsonObject =
     let getPropertyResult = JsonNode.asJsonValue >> JsonResult.bind JsonValue.asInt
     getPropertyFromResult getPropertyResult propertyName jsonObject
 
-let setProperty (propertyName: string) propertyValue (jsonObject: JsonObject) =
-    jsonObject[propertyName] <- propertyValue :> JsonNode | null
+let setProperty (propertyName: string) (propertyValue: JsonNode | null) (jsonObject: JsonObject) =
+    jsonObject[propertyName] <- propertyValue
     jsonObject
 
 let removeProperty (propertyName: string) (jsonObject: JsonObject) =

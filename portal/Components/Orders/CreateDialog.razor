@@ -1,0 +1,40 @@
+﻿@using common
+@using LanguageExt
+
+<FluentDialogHeader ShowDismiss="true">
+    <FluentStack VerticalAlignment="VerticalAlignment.Center">
+        <FluentLabel Typo="Typography.PaneHeader">
+            Create order
+        </FluentLabel>
+    </FluentStack>
+</FluentDialogHeader>
+
+<FluentDialogBody>
+    <h5>Select a size</h5>
+    <FluentCombobox @bind-Value="@selectedSize"
+                    TOption="string">
+        @foreach (var size in availableSizes)
+        {
+            <FluentOption>@size</FluentOption>
+        }
+    </FluentCombobox>
+    <FluentDivider />
+    <h5>Select toppings</h5>
+    <FluentDataGrid Items="@(toppings.AsQueryable())"
+                    GenerateHeader="GenerateHeaderOption.None">
+        <PropertyColumn Property="@(x => PizzaToppingKind.toString(x.Key))" Class="label" Width="25%"/>
+        <TemplateColumn>
+            <FluentRadioGroup Value="@context.Value" ValueChanged="@(value => toppings[context.Key] = value)" TValue="string">
+                @foreach (var toppingAmount in availableToppingAmounts)
+                {
+                    <FluentRadio Value="@toppingAmount">@toppingAmount</FluentRadio>
+                }
+            </FluentRadioGroup>
+        </TemplateColumn>
+    </FluentDataGrid>
+</FluentDialogBody>
+
+<FluentDialogFooter>
+    <FluentButton Appearance="Appearance.Accent" OnClick="@OnCreateButtonClicked">Create</FluentButton>
+    <FluentButton Appearance="Appearance.Neutral" OnClick="@OnCancelButtonClicked">Cancel</FluentButton>
+</FluentDialogFooter>

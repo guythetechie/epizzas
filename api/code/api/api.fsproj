@@ -9,11 +9,11 @@
 		<AnalysisLevel>latest-all</AnalysisLevel>
 		<Nullable>enable</Nullable>
 		<InvariantGlobalization>true</InvariantGlobalization>
-		<UserSecretsId>99772da9-f507-46e7-8e42-309166c1885a</UserSecretsId>
 	</PropertyGroup>
 
 	<ItemGroup>
 		<Compile Include="HealthCheck.fs" />
+		<Compile Include="Result.fs" />
 		<Compile Include="Orders.fs" />
 		<Compile Include="Azure.fs" />
 		<Compile Include="Cosmos.fs" />
