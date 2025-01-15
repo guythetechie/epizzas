@@ -1,19 +1,11 @@
 ﻿using Azure.Monitor.OpenTelemetry.AspNetCore;
-using LanguageExt;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Text.Json;
-using static LanguageExt.Prelude;
 
 namespace common;
 
@@ -39,14 +31,4 @@ public static class OpenTelemetryModule
 
     public static void SetAlwaysOnSampler(OpenTelemetryBuilder builder) =>
         builder.WithTracing(builder => builder.SetSampler(new AlwaysOnSampler()));
-}
-
-public static class ActivityModule
-{
-    [return: NotNullIfNotNull(nameof(activity))]
-    public static Activity? AddSerializedTag(this Activity? activity, string key, object? value) =>
-        activity?.SetTag(key,
-                         JsonSerializer.SerializeToNode(value,
-                                                        value?.GetType() ?? typeof(object),
-                                                        JsonSerializerOptions.Web));
 }

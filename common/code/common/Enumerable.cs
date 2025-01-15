@@ -198,7 +198,9 @@ public static class IAsyncEnumerableExtensions
     /// Iterates over an <seealso cref="IEnumerable{T}"/> and executes <paramref name="action"/> for each element.
     /// Each action is executed sequentially. The function returns after all actions have executed.
     /// </summary>
-    public static async ValueTask Iter<T>(this IAsyncEnumerable<T> enumerable, Func<T, CancellationToken, ValueTask> action, CancellationToken cancellationToken)
+    public static async ValueTask Iter<T>(this IAsyncEnumerable<T> enumerable,
+                                          Func<T, CancellationToken, ValueTask> action,
+                                          CancellationToken cancellationToken)
     {
         await foreach (var item in enumerable.WithCancellation(cancellationToken))
         {
@@ -331,7 +333,8 @@ public static class IAsyncEnumerableExtensions
     }
 
     /// <summary>
-    /// Takes each element in <paramref name="enumerable"/>, runs <paramref name="action"/> on it, then returns the element.
+    /// Takes each element in <paramref name="enumerable"/>,
+    /// runs <paramref name="action"/> on it, then returns the element.
     /// </summary>
     public static IAsyncEnumerable<T> Tap<T>(this IAsyncEnumerable<T> enumerable, Action<T> action) =>
         enumerable.Select(t =>

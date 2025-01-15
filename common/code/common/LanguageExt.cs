@@ -1,20 +1,10 @@
 ﻿using LanguageExt;
 using LanguageExt.Common;
-using LanguageExt.Traits;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace common;
-
-public static class EffModule
-{
-    public static async ValueTask<T> RunUnsafe<T>(this Eff<T> eff, CancellationToken cancellationToken) =>
-        await eff.RunUnsafeAsync(EnvIO.New(token: cancellationToken));
-
-    public static ValueTask<A> RunUnsafe<RT, A>(this K<Eff<RT>, A> ma, RT env, CancellationToken cancellationToken) =>
-        ma.As().effect.Run(env).RunAsync(EnvIO.New(token: cancellationToken));
-}
 
 public static class OptionExtensions
 {
@@ -34,7 +24,9 @@ public static class OptionExtensions
     /// <summary>
     /// If <paramref name="option"/> is Some, execute <paramref name="action"/> on its value.
     /// </summary>
-    public static async ValueTask IterTask<T>(this Option<T> option, Func<T, CancellationToken, ValueTask> action, CancellationToken cancellationToken) =>
+    public static async ValueTask IterTask<T>(this Option<T> option,
+                                              Func<T, CancellationToken, ValueTask> action,
+                                              CancellationToken cancellationToken) =>
         await option.Match(t => action(t, cancellationToken), () => ValueTask.CompletedTask);
 
     /// <summary>
@@ -52,20 +44,24 @@ public static class OptionExtensions
     /// If <paramref name="option"/> is Some, apply <paramref name="bind"/> to its value and return
     /// the result. Otherwise, return None of type <typeparamref name="T2"/>.
     /// </summary>
-    public static async ValueTask<Option<T2>> BindTask<T, T2>(this Option<T> option, Func<T, ValueTask<Option<T2>>> bind) =>
+    public static async ValueTask<Option<T2>> BindTask<T, T2>(this Option<T> option,
+                                                              Func<T, ValueTask<Option<T2>>> bind) =>
         await option.BindTask((t, _) => bind(t), CancellationToken.None);
 
     /// <summary>
     /// If <paramref name="option"/> is Some, apply <paramref name="bind"/> to its value and return
     /// the result. Otherwise, return None of type <typeparamref name="T2"/>.
     /// </summary>
-    public static async ValueTask<Option<T2>> BindTask<T, T2>(this Option<T> option, Func<T, CancellationToken, ValueTask<Option<T2>>> bind, CancellationToken cancellationToken) =>
+    public static async ValueTask<Option<T2>> BindTask<T, T2>(this Option<T> option,
+                                                              Func<T, CancellationToken, ValueTask<Option<T2>>> bind,
+                                                              CancellationToken cancellationToken) =>
         await option.Match(t => bind(t, cancellationToken), () => ValueTask.FromResult(Option<T2>.None));
 
     public static async ValueTask<Option<T>> Or<T>(this Option<T> option, Func<ValueTask<Option<T>>> alternative) =>
          await option.Match(t => ValueTask.FromResult(Option<T>.Some(t)), alternative);
 
-    public static async ValueTask<Option<T>> Or<T>(this ValueTask<Option<T>> optionTask, Func<ValueTask<Option<T>>> alternative)
+    public static async ValueTask<Option<T>> Or<T>(this ValueTask<Option<T>> optionTask,
+                                                   Func<ValueTask<Option<T>>> alternative)
     {
         var option = await optionTask;
         return await option.Or(alternative);

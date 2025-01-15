@@ -19,6 +19,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <ProjectReference Include="..\..\..\api\code\api.integration.tests\api.integration.tests.csproj" />
 	  <ProjectReference Include="..\..\..\api\code\api\api.csproj" />
 	  <ProjectReference Include="..\..\..\portal\portal.csproj" />
 	</ItemGroup>

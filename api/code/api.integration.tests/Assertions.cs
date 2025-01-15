@@ -1,25 +1,46 @@
-﻿using FluentAssertions.Execution;
-using FluentAssertions.Primitives;
+﻿using common;
 using FluentAssertions;
+using FluentAssertions.Execution;
+using FluentAssertions.Primitives;
 using LanguageExt;
-using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using common;
-using System.Text.Json.Nodes;
+using System.Net.Http;
 
 namespace api.integration.tests;
 
-internal sealed class OptionAssertions<T>(Option<T> subject, AssertionChain assertionChain) : ReferenceTypeAssertions<Option<T>, OptionAssertions<T>>(subject, assertionChain)
+internal sealed class HttpResponseMessageAssertions(HttpResponseMessage subject, AssertionChain assertionChain)
+    : ReferenceTypeAssertions<HttpResponseMessage, HttpResponseMessageAssertions>(subject, assertionChain)
+{
+    private readonly AssertionChain assertionChain = assertionChain;
+    protected override string Identifier { get; } = "HTTP response message";
+
+
+    public AndConstraint<HttpResponseMessageAssertions> BeSuccessful([StringSyntax("CompositeFormat")] string because = "",
+                                                                     params object[] becauseArgs)
+    {
+        assertionChain.BecauseOf(because, becauseArgs);
+
+        switch (Subject)
+        {
+            case { IsSuccessStatusCode: true }:
+                return new AndConstraint<HttpResponseMessageAssertions>(this);
+            default:
+                assertionChain.FailWith("Expected {context:HTTP response message} to be successful, but its status code was {0}.",
+                                        Subject.StatusCode);
+                return new AndConstraint<HttpResponseMessageAssertions>(this);
+        }
+    }
+}
+
+internal sealed class OptionAssertions<T>(Option<T> subject, AssertionChain assertionChain)
+    : ReferenceTypeAssertions<Option<T>, OptionAssertions<T>>(subject, assertionChain)
 {
     private readonly AssertionChain assertionChain = assertionChain;
 
     protected override string Identifier { get; } = "option";
 
-    public AndWhichConstraint<OptionAssertions<T>, T> BeSome([StringSyntax("CompositeFormat")] string because = "", params object[] becauseArgs)
+    public AndWhichConstraint<OptionAssertions<T>, T> BeSome([StringSyntax("CompositeFormat")] string because = "",
+                                                             params object[] becauseArgs)
     {
         assertionChain.BecauseOf(because, becauseArgs);
 
@@ -31,7 +52,8 @@ internal sealed class OptionAssertions<T>(Option<T> subject, AssertionChain asse
                              });
     }
 
-    public AndWhichConstraint<OptionAssertions<T>, T> BeNone([StringSyntax("CompositeFormat")] string because = "", params object[] becauseArgs)
+    public AndWhichConstraint<OptionAssertions<T>, T> BeNone([StringSyntax("CompositeFormat")] string because = "",
+                                                             params object[] becauseArgs)
     {
         assertionChain.BecauseOf(because, becauseArgs);
 
@@ -44,13 +66,15 @@ internal sealed class OptionAssertions<T>(Option<T> subject, AssertionChain asse
     }
 }
 
-internal sealed class JsonResultAssertions<T>(JsonResult<T> subject, AssertionChain assertionChain) : ReferenceTypeAssertions<JsonResult<T>, JsonResultAssertions<T>>(subject, assertionChain)
+internal sealed class JsonResultAssertions<T>(JsonResult<T> subject, AssertionChain assertionChain)
+    : ReferenceTypeAssertions<JsonResult<T>, JsonResultAssertions<T>>(subject, assertionChain)
 {
     private readonly AssertionChain assertionChain = assertionChain;
 
     protected override string Identifier { get; } = "JSON result";
 
-    public AndWhichConstraint<JsonResultAssertions<T>, T> BeSuccess([StringSyntax("CompositeFormat")] string because = "", params object[] becauseArgs)
+    public AndWhichConstraint<JsonResultAssertions<T>, T> BeSuccess([StringSyntax("CompositeFormat")] string because = "",
+                                                                    params object[] becauseArgs)
     {
         assertionChain.BecauseOf(because, becauseArgs);
 
@@ -62,7 +86,8 @@ internal sealed class JsonResultAssertions<T>(JsonResult<T> subject, AssertionCh
                              });
     }
 
-    public AndWhichConstraint<JsonResultAssertions<T>, JsonError> BeError([StringSyntax("CompositeFormat")] string because = "", params object[] becauseArgs)
+    public AndWhichConstraint<JsonResultAssertions<T>, JsonError> BeError([StringSyntax("CompositeFormat")] string because = "",
+                                                                          params object[] becauseArgs)
     {
         assertionChain.BecauseOf(because, becauseArgs);
 
@@ -81,5 +106,8 @@ internal static class AssertionExtensions
         new(subject, AssertionChain.GetOrCreate());
 
     public static OptionAssertions<T> Should<T>(this Option<T> subject) =>
+        new(subject, AssertionChain.GetOrCreate());
+
+    public static HttpResponseMessageAssertions Should(this HttpResponseMessage subject) =>
         new(subject, AssertionChain.GetOrCreate());
 }

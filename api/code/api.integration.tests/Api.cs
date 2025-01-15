@@ -1,81 +1,172 @@
-﻿using System;
-using System.Net.Http;
-using System.Net.Http.Json;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Threading;
-using System.Threading.Tasks;
-using common;
-using LanguageExt;
+﻿using common;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
-using static LanguageExt.Prelude;
+using System;
+using System.Diagnostics;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace api.integration.tests;
 
+internal delegate ValueTask<HttpResponseMessage> FindOrder(OrderId orderId, CancellationToken cancellationToken);
+internal delegate ValueTask<HttpResponseMessage> CreateOrder(Order order, CancellationToken cancellationToken);
+internal delegate ValueTask<HttpResponseMessage> CancelOrder(OrderId orderId, ETag ETag, CancellationToken cancellationToken);
+internal delegate ValueTask<HttpResponseMessage> ListOrders(CancellationToken cancellationToken);
 internal delegate HttpClient GetApiClient();
 
 internal static class ApiModule
 {
-    public static Eff<GetApiClient, HttpResponseMessage> ListOrders() =>
-        GetClientResponse(
+    public static void ConfigureListOrders(IHostApplicationBuilder builder)
+    {
+        ConfigureGetApiClient(builder);
+
+        builder.Services.TryAddSingleton(GetListOrders);
+    }
+
+    private static ListOrders GetListOrders(IServiceProvider provider)
+    {
+        var getClient = provider.GetRequiredService<GetApiClient>();
+        var activitySource = provider.GetRequiredService<ActivitySource>();
+
+        return async cancellationToken =>
+        {
+            using var activity = activitySource.StartActivity(nameof(ListOrders));
+
+            var response = await GetApiResponse(getClient,
+                                                "/v1/orders",
+                                                async (uri, client) => await client.GetAsync(uri, cancellationToken));
+
+            activity?.SetTag("statusCode", response.StatusCode);
+
+            return response;
+        };
+    }
+
+    public static void ConfigureCancelOrder(IHostApplicationBuilder builder)
+    {
+        ConfigureGetApiClient(builder);
+
+        builder.Services.TryAddSingleton(GetCancelOrder);
+    }
+
+    private static CancelOrder GetCancelOrder(IServiceProvider provider)
+    {
+        var getClient = provider.GetRequiredService<GetApiClient>();
+        var activitySource = provider.GetRequiredService<ActivitySource>();
+
+        return async (orderId, eTag, cancellationToken) =>
+        {
+            using var activity = activitySource.StartActivity(nameof(CancelOrder))
+                                              ?.SetTag("orderId", orderId)
+                                              ?.SetTag("eTag", eTag);
+
+            var response = await GetApiResponse(getClient,
+                                                $"/v1/orders/{orderId}",
+                                                async (uri, client) =>
+                                                {
+                                                    using var request = new HttpRequestMessage(HttpMethod.Delete, uri);
+                                                    request.Headers.Add("If-Match", eTag.ToString());
+                                                    return await client.SendAsync(request, cancellationToken);
+                                                });
+
+            activity?.SetTag("statusCode", response.StatusCode);
+
+            return response;
+        };
+    }
+
+
+    public static void ConfigureCreateOrder(IHostApplicationBuilder builder)
+    {
+        ConfigureGetApiClient(builder);
+
+        builder.Services.TryAddSingleton(GetCreateOrder);
+    }
+
+    private static CreateOrder GetCreateOrder(IServiceProvider provider)
+    {
+        var getClient = provider.GetRequiredService<GetApiClient>();
+        var activitySource = provider.GetRequiredService<ActivitySource>();
+
+        return async (order, cancellationToken) =>
+        {
+            using var activity = activitySource.StartActivity(nameof(CreateOrder))
+                                              ?.SetTag("order", Order.Serialize(order));
+
+            var response = await GetApiResponse(
+                getClient,
                 "/v1/orders",
-                async (client, uri, cancellationToken) => await client.GetAsync(uri, cancellationToken)
-            )
-            .As();
-
-    private static Eff<GetApiClient, HttpResponseMessage> GetClientResponse(
-        string relativeUriString,
-        Func<HttpClient, Uri, CancellationToken, ValueTask<HttpResponseMessage>> f
-    ) =>
-        from getApiClient in runtime<GetApiClient>()
-        from client in use(getApiClient.Invoke)
-        let uri = new Uri(relativeUriString, UriKind.Relative)
-        from cancellationToken in cancelToken
-        from response in liftIO(async () => await f(client, uri, cancellationToken))
-        select response;
-
-    public static Eff<GetApiClient, HttpResponseMessage> GetOrder(string orderId) =>
-        GetClientResponse(
-                $"/v1/orders/{orderId}",
-                async (client, uri, cancellationToken) => await client.GetAsync(uri, cancellationToken)
-            )
-            .As();
-
-    public static Eff<GetApiClient, HttpResponseMessage> CreateOrder(JsonNode json) =>
-        GetClientResponse(
-                "/v1/orders",
-                async (client, uri, cancellationToken) =>
+                async (uri, client) =>
                 {
-                    using var content = JsonContent.Create(json, options: JsonSerializerOptions.Web);
-                    return await client.PostAsync(uri, content, cancellationToken);
-                }
-            )
-            .As();
+                    using var request = new HttpRequestMessage(HttpMethod.Post, uri)
+                    {
+                        Content = JsonContent.Create(Order.Serialize(order))
+                    };
 
-    public static Eff<GetApiClient, HttpResponseMessage> CancelOrder(string orderId) =>
-        GetClientResponse(
-                $"/v1/orders/{orderId}",
-                async (client, uri, cancellationToken) => await client.DeleteAsync(uri, cancellationToken)
-            )
-            .As();
+                    request.Headers.IfMatch.Add(EntityTagHeaderValue.Any);
+
+                    return await client.SendAsync(request, cancellationToken);
+                });
+
+            activity?.SetTag("statusCode", response.StatusCode);
+
+            return response;
+        };
+    }
+
+    public static void ConfigureFindOrder(IHostApplicationBuilder builder)
+    {
+        ConfigureGetApiClient(builder);
+
+        builder.Services.TryAddSingleton(GetFindOrder);
+    }
+
+    private static FindOrder GetFindOrder(IServiceProvider provider)
+    {
+        var getClient = provider.GetRequiredService<GetApiClient>();
+        var activitySource = provider.GetRequiredService<ActivitySource>();
+
+        return async (orderId, cancellationToken) =>
+        {
+            using var activity = activitySource.StartActivity(nameof(FindOrder))
+                                              ?.SetTag("orderId", orderId);
+
+            var response = await GetApiResponse(getClient,
+                                                $"/v1/orders/{orderId}",
+                                                async (uri, client) => await client.GetAsync(uri, cancellationToken));
+
+            activity?.SetTag("statusCode", response.StatusCode);
+
+            return response;
+        };
+    }
+
+    private static async ValueTask<HttpResponseMessage> GetApiResponse(
+        GetApiClient getClient,
+        string relativeUrl,
+        Func<Uri, HttpClient, ValueTask<HttpResponseMessage>> f)
+    {
+        using var client = getClient();
+        var uri = new Uri(relativeUrl, UriKind.Relative);
+        return await f(uri, client);
+    }
 
     public static void ConfigureGetApiClient(IHostApplicationBuilder builder)
     {
-        HttpModule.AddResilience(builder);
+        //HttpModule.AddResilience(builder);
         HttpModule.AddServiceDiscovery(builder);
 
-        builder.Services.AddHttpClient(
-            ApiClientKey,
-            client =>
-            {
-                var apiConnectionName = builder.Configuration.GetValueOrThrow("API_CONNECTION_NAME");
+        builder.Services.AddHttpClient(ApiClientKey, client =>
+        {
+            var apiConnectionName = builder.Configuration.GetValueOrThrow("API_CONNECTION_NAME");
 
-                client.BaseAddress = new($"https+http://{apiConnectionName}");
-                client.Timeout = TimeSpan.FromMinutes(3);
-            }
-        );
+            client.BaseAddress = new($"https+http://{apiConnectionName}");
+            client.Timeout = TimeSpan.FromSeconds(300);
+        });
 
         builder.Services.TryAddSingleton(GetGetApiClient);
     }

@@ -2,57 +2,85 @@
 using Azure.Core;
 using common;
 using LanguageExt;
-using LanguageExt.Common;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using System;
-using System.Collections.Immutable;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
 using System.Text.Json;
-using System.Text.Json.Nodes;
-using static LanguageExt.Prelude;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace api.integration.tests;
+
+internal delegate ValueTask EmptyOrdersContainer(CancellationToken cancellationToken);
 
 internal sealed record OrdersContainer(Container Value);
 
 internal static class CosmosModule
 {
-    public static Eff<OrdersContainer, Unit> EmptyOrdersContainer() =>
-        from orders in ListOrders()
-        from result in orders.AsIterable().Traverse(DeleteOrder)
-        select Unit.Default;
-
-    private static Eff<OrdersContainer, ImmutableArray<JsonObject>> ListOrders() =>
-        from container in runtime<OrdersContainer>()
-        let query = new CosmosQueryOptions
-        {
-            Query = new QueryDefinition("SELECT c.id, c.orderId, c.etag FROM c")
-        }
-        from orders in common.CosmosModule.GetQueryResults(container.Value, query)
-        select orders;
-
-    private static Eff<OrdersContainer, Unit> DeleteOrder(JsonObject orderJson)
+    public static void ConfigureEmptyOrdersContainer(IHostApplicationBuilder builder)
     {
-        var jsonResult =
-            from cosmosId in common.CosmosModule.GetCosmosId(orderJson)
-            from orderIdString in orderJson.GetStringProperty("orderId")
-            from eTag in common.CosmosModule.GetETag(orderJson)
-            select (cosmosId, orderIdString, eTag);
+        ConfigureOrdersContainer(builder);
 
-        return
-            from x in jsonResult.ToEff().WithRuntime<OrdersContainer>()
-            from orderId in OrderId.From(x.orderIdString).ToEff()
-            let partitionKey = common.CosmosModule.GetPartitionKey(orderId)
-            from container in runtime<OrdersContainer>()
-            from result in common.CosmosModule.DeleteRecord(container.Value, x.cosmosId, partitionKey, x.eTag)
-            from _ in result.ToEff(error => Error.New($"Failed to delete order. Error is '{error}'."))
-            select Unit.Default;
+        builder.Services.TryAddSingleton(GetEmptyOrdersContainer);
     }
 
-    public static void ConfigureOrdersContainer(IHostApplicationBuilder builder)
+    private static EmptyOrdersContainer GetEmptyOrdersContainer(IServiceProvider provider)
+    {
+        var ordersContainer = provider.GetRequiredService<OrdersContainer>();
+        var activitySource = provider.GetRequiredService<ActivitySource>();
+
+        var container = ordersContainer.Value;
+
+        return async cancellationToken =>
+        {
+            using var activity = activitySource.StartActivity(nameof(EmptyOrdersContainer));
+
+            var deletedCount = 0;
+
+            await listOrders(cancellationToken)
+                    .IterParallel(async x =>
+                    {
+                        var (cosmosId, partitionKey, eTag) = x;
+
+                        await common.CosmosModule.DeleteRecord(container,
+                                                               cosmosId,
+                                                               partitionKey,
+                                                               eTag,
+                                                               cancellationToken);
+
+                        Interlocked.Increment(ref deletedCount);
+                    }, cancellationToken);
+
+            activity?.AddTag(nameof(deletedCount), deletedCount);
+        };
+
+        IAsyncEnumerable<(CosmosId, PartitionKey, ETag)> listOrders(CancellationToken cancellationToken)
+        {
+            var query = new CosmosQueryOptions
+            {
+                Query = new QueryDefinition("""
+                    SELECT c.id, c.orderId, c._etag
+                    FROM c
+                    """)
+            };
+
+            return common.CosmosModule.GetQueryResults(container, query, cancellationToken)
+                         .Select(json => from id in common.CosmosModule.GetCosmosId(json)
+                                         from partitionKeyString in json.GetStringProperty("orderId")
+                                         let partitionKey = new PartitionKey(partitionKeyString)
+                                         from eTag in common.CosmosModule.GetETag(json)
+                                         select (id, partitionKey, eTag))
+                         .Select(result => result.ThrowIfFail());
+        }
+    }
+
+    private static void ConfigureOrdersContainer(IHostApplicationBuilder builder)
     {
         ConfigureDatabase(builder);
 

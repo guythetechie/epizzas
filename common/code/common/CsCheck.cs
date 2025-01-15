@@ -197,7 +197,8 @@ public static class Generator
         : from items in Gen.Shuffle(collection.ToArray(), collection.Count)
           select items.ToImmutableArray();
 
-    public static Gen<FrozenSet<T>> SubFrozenSetOf<T>(ICollection<T> collection, IEqualityComparer<T>? comparer = default)
+    public static Gen<FrozenSet<T>> SubFrozenSetOf<T>(ICollection<T> collection,
+                                                      IEqualityComparer<T>? comparer = default)
     {
         var comparerToUse = (comparer, collection) switch
         {
@@ -209,7 +210,9 @@ public static class Generator
         return collection.Count is 0
                 ? Gen.Const(FrozenSet<T>.Empty)
                 : from items in Gen.Shuffle(collection.ToArray(), collection.Count)
-                  select items.ToFrozenSet(comparerToUse);
+                  from length in Gen.Int[0, collection.Count]
+                  select items.Take(length)
+                              .ToFrozenSet(comparerToUse);
     }
 
     public static Gen<Option<T>> OptionOf<T>(this Gen<T> gen) =>

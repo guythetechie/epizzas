@@ -3,44 +3,143 @@ using common;
 using CsCheck;
 using FluentAssertions;
 using LanguageExt;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
+using System;
+using System.Collections.Frozen;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
+using System.Linq;
 using System.Net.Http;
 using System.Text.Json.Nodes;
-using static LanguageExt.Prelude;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace api.integration.tests;
 
-internal delegate Eff<Unit> TestOrders();
+internal delegate ValueTask RunOrderTests(CancellationToken cancellationToken);
 
 internal static class OrdersModule
 {
-    public static Eff<(ActivitySource ActivitySource, OrdersContainer OrdersContainer, GetApiClient GetApiClient), Unit> RunTests() =>
-        from env in runtime<(ActivitySource ActivitySource,
-                             OrdersContainer OrdersContainer,
-                             GetApiClient GetApiClient)>().As()
-        let activity = use(() => env.ActivitySource.StartActivity("orders.run_tests")!)
-        from __ in CosmosModule.EmptyOrdersContainer().RunIO(env.OrdersContainer)
-        from ___ in EnsureNoOrdersAreReturned().RunIO(env.GetApiClient)
-        select Unit.Default;
+    public static void ConfigureRunOrderTests(IHostApplicationBuilder builder)
+    {
+        CosmosModule.ConfigureEmptyOrdersContainer(builder);
+        ApiModule.ConfigureListOrders(builder);
+        ApiModule.ConfigureCreateOrder(builder);
+        ApiModule.ConfigureCancelOrder(builder);
+        ApiModule.ConfigureFindOrder(builder);
 
-    private static Eff<GetApiClient, Unit> EnsureNoOrdersAreReturned() =>
-        from response in use(ApiModule.ListOrders()).As()
-        from orders in GetOrdersFromListResponse(response)
-        let _ = orders.Should().BeEmpty()
-        select Unit.Default;
+        builder.Services.TryAddSingleton(GetRunOrderTests);
+    }
 
-    private static Eff<ImmutableArray<Order>> GetOrdersFromListResponse(HttpResponseMessage response) =>
-        from cancellationToken in cancelTokenEff
-        from stream in use(liftIO(async () => await response.Content.ReadAsStreamAsync(cancellationToken))).As()
-        from jsonResult in JsonNodeModule.Deserialize<JsonObject>(stream)
-        let ordersResult =
-            from json in jsonResult
-            from valuesArray in json.GetJsonArrayProperty("value")
-            from orders in valuesArray.AsIterable().Traverse(Order.Deserialize)
-            select orders.ToImmutableArray()
-        from orders in ordersResult.ToEff()
-        select orders;
+    private static RunOrderTests GetRunOrderTests(IServiceProvider provider)
+    {
+        var activitySource = provider.GetRequiredService<ActivitySource>();
+        var emptyOrdersContainer = provider.GetRequiredService<EmptyOrdersContainer>();
+        var listOrders = provider.GetRequiredService<ListOrders>();
+        var createOrder = provider.GetRequiredService<CreateOrder>();
+        var cancelOrder = provider.GetRequiredService<CancelOrder>();
+        var findOrder = provider.GetRequiredService<FindOrder>();
+
+        return async cancellationToken =>
+        {
+            using var activity = activitySource.StartActivity(nameof(RunOrderTests));
+
+            var generator = from orders in Generator.Order.FrozenSetOf((first, second) => first?.Id == second?.Id,
+                                                                       order => order.Id.GetHashCode())
+                            from ordersToCancel in Generator.SubFrozenSetOf(orders)
+                            from missingOrderId in Generator.OrderId
+                            where orders.All(order => order.Id != missingOrderId)
+                            select (orders, ordersToCancel, missingOrderId);
+
+            await generator.SampleAsync(async x =>
+            {
+                var (orders, ordersToCancel, missingOrderId) = x;
+
+                await ensure_no_orders_after_emptying_container(cancellationToken);
+                await ensure_orders_are_created(orders, cancellationToken);
+                await ensure_orders_are_canceled(ordersToCancel, cancellationToken);
+            }, iter: 1);
+
+            await emptyOrdersContainer(cancellationToken);
+        };
+
+        async ValueTask ensure_no_orders_after_emptying_container(CancellationToken cancellationToken)
+        {
+            using var _ = activitySource.StartActivity(nameof(ensure_no_orders_after_emptying_container));
+
+            await emptyOrdersContainer(cancellationToken);
+            using var response = await listOrders(cancellationToken);
+            var orders = await listOrdersFromResponse(response, cancellationToken);
+            orders.Should().BeEmpty();
+        }
+
+        async ValueTask<ImmutableArray<(Order, ETag)>> listOrdersFromResponse(HttpResponseMessage response,
+                                                                              CancellationToken cancellationToken)
+        {
+            var result = from jsonNode in await JsonNodeModule.From(await response.Content.ReadAsStreamAsync(cancellationToken),
+                                                                    cancellationToken: cancellationToken)
+                         from jsonObject in jsonNode.AsJsonObject()
+                         from jsonArray in jsonObject.GetJsonArrayProperty("values")
+                         from orders in jsonArray.AsIterable().Traverse(getOrderAndETag).As()
+                         select orders;
+
+            return [.. result.ThrowIfFail()];
+        }
+
+        static JsonResult<(Order, ETag)> getOrderAndETag(JsonNode? node) =>
+            from order in Order.Deserialize(node)
+            from jsonObject in node.AsJsonObject()
+            from eTagString in jsonObject.GetStringProperty("eTag")
+            let eTag = ETag.From(eTagString)
+            select (order, eTag.ThrowIfFail());
+
+        async ValueTask ensure_orders_are_created(IEnumerable<Order> orders, CancellationToken cancellationToken)
+        {
+            using var _ = activitySource.StartActivity(nameof(ensure_orders_are_created));
+
+            await orders.IterParallel(async order =>
+            {
+                using var createResponse = await createOrder(order, cancellationToken);
+                createResponse.Should().BeSuccessful();
+
+                using var findResponse = await findOrder(order.Id, cancellationToken);
+                findResponse.Should().BeSuccessful();
+            }, cancellationToken);
+        }
+
+        async ValueTask ensure_orders_are_canceled(IEnumerable<Order> orders, CancellationToken cancellationToken)
+        {
+            using var _ = activitySource.StartActivity(nameof(ensure_orders_are_canceled));
+
+            await orders.IterParallel(async order =>
+            {
+                using var createResponse = await createOrder(order, cancellationToken);
+                createResponse.Should().BeSuccessful();
+
+                using var firstFindResponse = await findOrder(order.Id, cancellationToken);
+                var (_, eTag) = await getOrderFromResponse(firstFindResponse, cancellationToken);
+
+                using var _ = await cancelOrder(order.Id, eTag, cancellationToken);
+                using var secondFindResponse = await findOrder(order.Id, cancellationToken);
+                var (cancelledOrder, _) = await getOrderFromResponse(secondFindResponse, cancellationToken);
+                cancelledOrder.Status.Should().BeOfType<OrderStatus.Cancelled>();
+            }, cancellationToken);
+        }
+
+        async ValueTask<(Order, ETag)> getOrderFromResponse(HttpResponseMessage response,
+                                                            CancellationToken cancellationToken)
+        {
+            var result = from jsonNode in await JsonNodeModule.From(await response.Content.ReadAsStreamAsync(cancellationToken),
+                                                                    cancellationToken: cancellationToken)
+                         from orderAndETag in getOrderAndETag(jsonNode)
+                         select orderAndETag;
+
+            return result.ThrowIfFail();
+        }
+    }
 }
 
 //internal delegate ValueTask TestOrders(CancellationToken cancellationToken);

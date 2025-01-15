@@ -5,6 +5,8 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
+using static LanguageExt.Prelude;
+
 namespace common;
 
 internal sealed record ApiOperation<T> : K<ApiOperation, T>
@@ -30,14 +32,14 @@ public class ApiOperation :
     public static K<ApiOperation, A> Pure<A>(A value) =>
         new ApiOperation<A>(Prelude.Pure(value));
 
-    public static K<ApiOperation, A> Lift<A>(Eff<A> value) =>
-        new ApiOperation<A>(EitherT<IResult, Eff, A>.Lift(value));
+    public static K<ApiOperation, A> Lift<A>(ValueTask<A> value) =>
+        new ApiOperation<A>(EitherT<IResult, Eff, A>.LiftIO(liftIO(async () => await value)));
 
     public static K<ApiOperation, A> Lift<A>(Either<IResult, A> value) =>
         new ApiOperation<A>(EitherT<IResult, Eff, A>.Lift(value));
 
-    public static K<ApiOperation, A> Lift<A>(Eff<Either<IResult, A>> value) =>
-        new ApiOperation<A>(EitherT<IResult, Eff, A>.Lift(value));
+    public static K<ApiOperation, A> Lift<A>(ValueTask<Either<IResult, A>> value) =>
+        new ApiOperation<A>(EitherT<IResult, Eff, A>.LiftIO(liftIO(async () => await value)));
 
     public static K<ApiOperation, B> Apply<A, B>(K<ApiOperation, Func<A, B>> mf, K<ApiOperation, A> ma) =>
         mf.Bind(ma.Map);
@@ -61,6 +63,6 @@ public static class ApiOperationExtensions
         this K<ApiOperation, IResult> operation,
         CancellationToken cancellationToken) =>
         await operation.As()
-                       .Match(Prelude.identity, Prelude.identity)
+                       .Match(identity, identity)
                        .RunUnsafeAsync(EnvIO.New(token: cancellationToken));
 }

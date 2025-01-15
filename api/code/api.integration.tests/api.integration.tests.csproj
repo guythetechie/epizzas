@@ -13,16 +13,18 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+	  <Compile Remove="v1\**" />
+	  <EmbeddedResource Remove="v1\**" />
+	  <None Remove="v1\**" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<PackageReference Include="Aspire.Microsoft.Azure.Cosmos" Version="9.0.0" />
 	  <PackageReference Include="FluentAssertions" Version="8.0.0" />
 	</ItemGroup>
 
 	<ItemGroup>
 	  <ProjectReference Include="..\..\..\common\code\common\common.csproj" />
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Folder Include="v1\Orders\" />
 	</ItemGroup>
 
 </Project>

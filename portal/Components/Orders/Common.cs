@@ -36,8 +36,8 @@ internal static class CommonModule
 
         return listOrders;
 
-        async IAsyncEnumerable<(Order Order, ETag ETag)> listOrders(
-            [EnumeratorCancellation] CancellationToken cancellationToken)
+        async IAsyncEnumerable<(Order Order, ETag ETag)> listOrders([EnumeratorCancellation]
+                                                                    CancellationToken cancellationToken)
         {
             using var activity = activitySource.StartActivity(nameof(ListOrders));
 
@@ -49,15 +49,13 @@ internal static class CommonModule
             using var response = await client.GetAsync(uri, cancellationToken);
             using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
 
-            var orders = from nodeResult in JsonNodeModule.FromStream(stream)
-                         let ordersResult = from node in nodeResult
-                                            from jsonObject in node.AsJsonObject()
-                                            from jsonArray in jsonObject.GetJsonArrayProperty("values")
-                                            from orders in jsonArray.AsIterable().Traverse(getOrderAndETag).As()
-                                            select orders
-                         select ordersResult.ThrowIfFail();
+            var ordersResult = from jsonNode in await JsonNodeModule.From(stream, cancellationToken: cancellationToken)
+                               from jsonObject in jsonNode.AsJsonObject()
+                               from jsonArray in jsonObject.GetJsonArrayProperty("values")
+                               from orders in jsonArray.AsIterable().Traverse(getOrderAndETag).As()
+                               select orders;
 
-            foreach (var order in await orders.RunUnsafe(cancellationToken))
+            foreach (var order in ordersResult.ThrowIfFail())
             {
                 yield return order;
                 orderCount++;

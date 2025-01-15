@@ -10,6 +10,8 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
 using static LanguageExt.Prelude;
 
 namespace common;
@@ -107,15 +109,9 @@ public static class JsonArrayModule
     public static JsonArray ToJsonArray(this IEnumerable<JsonNode?> nodes) =>
         new([.. nodes]);
 
-    public static Eff<JsonArray> ToJsonArray(this IAsyncEnumerable<JsonNode?> nodes) =>
-        IO.liftAsync(async env =>
-            await nodes.AggregateAsync(new JsonArray(),
-                                       (array, node) =>
-                                       {
-                                           array.Add(node);
-                                           return array;
-                                       },
-                                       env.Token));
+    public static async ValueTask<JsonArray> ToJsonArray(this IAsyncEnumerable<JsonNode?> nodes,
+                                                         CancellationToken cancellationToken) =>
+        new([.. await nodes.ToListAsync(cancellationToken)]);
 
     public static JsonResult<ImmutableArray<JsonObject>> GetJsonObjects(this JsonArray jsonArray) =>
         jsonArray.GetElements(jsonNode => jsonNode.AsJsonObject(),
@@ -171,35 +167,50 @@ public static class JsonNodeModule
             _ => JsonResult.Fail<JsonValue>("JSON node is not a JSON value.")
         };
 
-    public static Eff<JsonResult<JsonNode>> FromStream(Stream? stream, JsonNodeOptions? options = null) =>
-        liftIO(async env =>
+    public static async ValueTask<JsonResult<JsonNode>> From(Stream? data,
+                                                             JsonNodeOptions? nodeOptions = default,
+                                                             JsonDocumentOptions documentOptions = default,
+                                                             CancellationToken cancellationToken = default)
+    {
+        try
         {
-            if (stream is null)
+            return data switch
             {
-                return JsonResult.Fail<JsonNode>("Stream is null.");
-            }
-
-            var node = await JsonNode.ParseAsync(stream, options, cancellationToken: env.Token);
-
-            return node is null
-                        ? JsonResult.Fail<JsonNode>("Deserialization return a null result.")
-                        : JsonResult.Succeed(node);
-        })
-        .Catch(error => error.ToException() is JsonException jsonException
-                            ? IO.pure(JsonResult.Fail<JsonNode>(JsonError.From(jsonException)))
-                            : IO.fail<JsonResult<JsonNode>>(error))
-        .As();
-
-    public static Eff<JsonResult<T>> Deserialize<T>(Stream? stream, JsonSerializerOptions? options = default) =>
-        stream switch
+                null => JsonResult.Fail<JsonNode>("Binary data is null."),
+                _ => await JsonNode.ParseAsync(data, nodeOptions, documentOptions, cancellationToken) switch
+                {
+                    null => JsonResult.Fail<JsonNode>("Deserialization returned a null result."),
+                    var node => JsonResult.Succeed(node)
+                }
+            };
+        }
+        catch (JsonException exception)
         {
-            null => SuccessEff(JsonResult.Fail<T>("Stream is null.")),
-            _ => IO.liftAsync(async env =>
-                            {
-                                var data = await BinaryData.FromStreamAsync(stream, env.Token);
-                                return Deserialize<T>(data, options);
-                            }),
-        };
+            var jsonError = JsonError.From(exception);
+            return JsonResult.Fail<JsonNode>(jsonError);
+        }
+    }
+
+    public static JsonResult<JsonNode> From(BinaryData? data, JsonNodeOptions? options = default)
+    {
+        try
+        {
+            return data switch
+            {
+                null => JsonResult.Fail<JsonNode>("Binary data is null."),
+                _ => JsonNode.Parse(data, options) switch
+                {
+                    null => JsonResult.Fail<JsonNode>("Deserialization returned a null result."),
+                    var node => JsonResult.Succeed(node)
+                }
+            };
+        }
+        catch (JsonException exception)
+        {
+            var jsonError = JsonError.From(exception);
+            return JsonResult.Fail<JsonNode>(jsonError);
+        }
+    }
 
     public static JsonResult<T> Deserialize<T>(BinaryData? data, JsonSerializerOptions? options = default)
     {
@@ -539,9 +550,6 @@ public static class JsonResultExtensions
 
     public static Fin<T> ToFin<T>(this K<JsonResult, T> k) =>
         k.As().Match(Fin<T>.Succ, Fin<T>.Fail);
-
-    public static Eff<T> ToEff<T>(this K<JsonResult, T> k) =>
-        k.ToFin().ToEff();
 
     public static Either<L, R> ToEither<L, R>(this K<JsonResult, R> k, Func<JsonError, L> mapError) =>
         k.As().Match(Either<L, R>.Right, error => Either<L, R>.Left(mapError(error)));

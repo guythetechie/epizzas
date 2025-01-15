@@ -1,16 +1,16 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Net;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using Azure;
-using LanguageExt;
+﻿using LanguageExt;
 using LanguageExt.Common;
 using LanguageExt.UnsafeValueAccess;
 using Microsoft.Azure.Cosmos;
 using OpenTelemetry;
-using static LanguageExt.Prelude;
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Net;
+using System.Runtime.CompilerServices;
+using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace common;
 
@@ -23,9 +23,9 @@ public sealed record CosmosId
     public override string ToString() => value;
 
     public static Fin<CosmosId> From(string value) =>
-        string.IsNullOrWhiteSpace(value) ? Error.New("Cosmos ID cannot be null or whitespace.") : new CosmosId(value);
-
-    public static CosmosId FromOrThrow(string value) => From(value).ThrowIfFail();
+        string.IsNullOrWhiteSpace(value)
+        ? Error.New("Cosmos ID cannot be null or whitespace.")
+        : new CosmosId(value);
 
     public static CosmosId Generate() => new(Guid.CreateVersion7().ToString());
 }
@@ -90,152 +90,157 @@ public static class CosmosModule
         from eTag in JsonResult.Lift(ETag.From(eTagString))
         select eTag;
 
-    public static Eff<ImmutableArray<JsonObject>> GetQueryResults(
-        Container container,
-        CosmosQueryOptions cosmosQueryOptions
-    ) =>
-        from iterator in GetFeedIterator(container, cosmosQueryOptions)
-        from results in GetQueryResults(iterator)
-        select results;
-
-    private static Eff<FeedIterator> GetFeedIterator(Container container, CosmosQueryOptions cosmosQueryOptions) =>
-        liftEff(() =>
-        {
-            var queryDefinition = cosmosQueryOptions.Query;
-            var continuationToken = cosmosQueryOptions.ContinuationToken.ValueUnsafe()?.ToString();
-
-            var queryRequestOptions = new QueryRequestOptions();
-            cosmosQueryOptions.PartitionKey.Iter(partitionKey => queryRequestOptions.PartitionKey = partitionKey);
-
-            return container.GetItemQueryStreamIterator(queryDefinition, continuationToken, queryRequestOptions);
-        });
-
-    private static Eff<ImmutableArray<JsonObject>> GetQueryResults(FeedIterator iterator)
+    public static async IAsyncEnumerable<JsonObject> GetQueryResults(Container container,
+                                                                     CosmosQueryOptions cosmosQueryOptions,
+                                                                     [EnumeratorCancellation]
+                                                                     CancellationToken cancellationToken)
     {
-        Eff<ImmutableArray<JsonObject>> getResults(ImmutableArray<JsonObject> jsonObjects) =>
-            from results in iterator.HasMoreResults
-                ? from currentPageResults in GetCurrentPageResults(iterator)
-                  from nextImmutableArray in getResults([.. jsonObjects, .. currentPageResults.Documents])
-                  select nextImmutableArray
-                : SuccessEff(jsonObjects)
-            select results;
+        using var iterator = GetFeedIterator(container, cosmosQueryOptions);
 
-        return getResults([]);
+        await foreach (var result in GetQueryResults(iterator, cancellationToken))
+        {
+            yield return result;
+        }
     }
 
-    private static Eff<(
+    private static FeedIterator GetFeedIterator(Container container, CosmosQueryOptions cosmosQueryOptions)
+    {
+        var queryDefinition = cosmosQueryOptions.Query;
+        var continuationToken = cosmosQueryOptions.ContinuationToken.ValueUnsafe()?.ToString();
+
+        var queryRequestOptions = new QueryRequestOptions();
+        cosmosQueryOptions.PartitionKey.Iter(partitionKey => queryRequestOptions.PartitionKey = partitionKey);
+
+        return container.GetItemQueryStreamIterator(queryDefinition, continuationToken, queryRequestOptions);
+    }
+
+    private static async IAsyncEnumerable<JsonObject> GetQueryResults(FeedIterator iterator,
+                                                                      [EnumeratorCancellation]
+                                                                      CancellationToken cancellationToken)
+    {
+        Option<ContinuationToken> continuationToken;
+
+        do
+        {
+            (var documents, continuationToken) = await GetCurrentPageResults(iterator, cancellationToken);
+            foreach (var document in documents)
+            {
+                yield return document;
+            }
+        }
+        while (continuationToken.IsSome);
+    }
+
+    private static async ValueTask<(
         ImmutableArray<JsonObject> Documents,
         Option<ContinuationToken> ContinuationToken
-    )> GetCurrentPageResults(FeedIterator iterator) =>
-        from cancellationToken in cancelTokenEff
-        from response in use(liftEff(async () => await iterator.ReadNextAsync(cancellationToken)))
-        let _ = response.EnsureSuccessStatusCode()
-        let continuationToken = ContinuationToken.From(response.ContinuationToken).ToOption()
-        from documents in GetDocuments(response)
-        select (documents, continuationToken);
+    )> GetCurrentPageResults(FeedIterator iterator, CancellationToken cancellationToken)
+    {
+        using var response = await iterator.ReadNextAsync(cancellationToken);
 
-    private static Eff<ImmutableArray<JsonObject>> GetDocuments(ResponseMessage response) =>
-        from jsonObject in GetJsonObjectContent(response)
-        from documentsJsonArray in jsonObject.GetJsonArrayProperty("Documents").ToEff()
-        from documents in documentsJsonArray.GetJsonObjects().ToEff()
-        select documents;
+        response.EnsureSuccessStatusCode();
 
-    private static Eff<JsonObject> GetJsonObjectContent(ResponseMessage response) =>
-        from node in GetJsonContent(response)
-        from jsonObject in node.AsJsonObject().ToEff()
-        select jsonObject;
+        var documents = await GetDocuments(response, cancellationToken);
 
-    private static Eff<JsonNode> GetJsonContent(ResponseMessage response) =>
-        from result in JsonNodeModule.Deserialize<JsonNode>(response.Content, JsonSerializerOptions.Web)
-        from node in result.ToEff()
-        select node;
+        var continuationToken = ContinuationToken.From(response.ContinuationToken)
+                                                 .ToOption();
 
-    public static Eff<Either<CosmosError, Unit>> CreateRecord(
-        Container container,
-        JsonObject jsonObject,
-        PartitionKey partitionKey
-    ) =>
-        from cancellationToken in cancelTokenEff
-        let options = new ItemRequestOptions { IfNoneMatchEtag = "*" }
-        from result in liftEff(async () =>
+        return (documents, continuationToken);
+    }
+
+    private static async ValueTask<ImmutableArray<JsonObject>> GetDocuments(ResponseMessage response,
+                                                                            CancellationToken cancellationToken)
+    {
+        var result = from jsonNode in await JsonNodeModule.From(response.Content, cancellationToken: cancellationToken)
+                     from jsonObject in jsonNode.AsJsonObject()
+                     from documentsJsonArray in jsonObject.GetJsonArrayProperty("Documents")
+                     from documents in documentsJsonArray.GetJsonObjects()
+                     select documents;
+
+        return result.ThrowIfFail();
+    }
+
+    public static async ValueTask<Either<CosmosError, Unit>> CreateRecord(Container container,
+                                                                          JsonObject jsonObject,
+                                                                          PartitionKey partitionKey,
+                                                                          CancellationToken cancellationToken)
+    {
+        using var stream = JsonNodeModule.ToStream(jsonObject);
+
+        using var response =
+            await container.CreateItemStreamAsync(stream,
+                                                  partitionKey,
+                                                  new ItemRequestOptions
+                                                  {
+                                                      IfNoneMatchEtag = ETag.All.ToString()
+                                                  },
+                                                  cancellationToken);
+
+        switch (response.StatusCode)
         {
-            using var stream = JsonNodeModule.ToStream(jsonObject);
-            using var response = await container.CreateItemStreamAsync(
-                stream,
-                partitionKey,
-                options,
-                cancellationToken
-            );
+            case HttpStatusCode.Conflict or HttpStatusCode.PreconditionFailed:
+                return CosmosError.AlreadyExists.Instance;
+            default:
+                response.EnsureSuccessStatusCode();
+                return Unit.Default;
+        }
+    }
 
-            switch (response.StatusCode)
-            {
-                case HttpStatusCode.Conflict
-                or HttpStatusCode.PreconditionFailed:
-                    return Either<CosmosError, Unit>.Left(CosmosError.AlreadyExists.Instance);
-                default:
-                    response.EnsureSuccessStatusCode();
-                    return Unit.Default;
-            }
-        })
-        select result;
+    public static async ValueTask<Either<CosmosError, Unit>> PatchRecord(Container container,
+                                                                         CosmosId id,
+                                                                         PartitionKey partitionKey,
+                                                                         IEnumerable<PatchOperation> patchOperations,
+                                                                         ETag eTag,
+                                                                         CancellationToken cancellationToken)
+    {
+        using var response =
+            await container.PatchItemStreamAsync(id.ToString(),
+                                                 partitionKey,
+                                                 [.. patchOperations],
+                                                 new PatchItemRequestOptions
+                                                 {
+                                                     IfMatchEtag = eTag.ToString()
+                                                 },
+                                                 cancellationToken);
 
-    public static Eff<Either<CosmosError, Unit>> PatchRecord(
-        Container container,
-        CosmosId id,
-        PartitionKey partitionKey,
-        IEnumerable<PatchOperation> patchOperations,
-        ETag eTag
-    ) =>
-        from cancellationToken in cancelTokenEff
-        from result in liftEff(async () =>
+        switch (response.StatusCode)
         {
-            using var response = await container.PatchItemStreamAsync(
-                id.ToString(),
-                partitionKey,
-                [.. patchOperations],
-                new PatchItemRequestOptions { IfMatchEtag = eTag.ToString() },
-                cancellationToken
-            );
+            case HttpStatusCode.PreconditionFailed:
+                return CosmosError.ETagMismatch.Instance;
+            case HttpStatusCode.NotFound:
+                return CosmosError.NotFound.Instance;
+            default:
+                response.EnsureSuccessStatusCode();
+                return Unit.Default;
+        }
+    }
 
-            switch (response.StatusCode)
-            {
-                case HttpStatusCode.PreconditionFailed:
-                    return Either<CosmosError, Unit>.Left(CosmosError.ETagMismatch.Instance);
-                case HttpStatusCode.NotFound:
-                    return Either<CosmosError, Unit>.Left(CosmosError.NotFound.Instance);
-                default:
-                    response.EnsureSuccessStatusCode();
-                    return Unit.Default;
-            }
-        })
-        select result;
+    public static async ValueTask<Either<CosmosError, Unit>> DeleteRecord(Container container,
+                                                                          CosmosId id,
+                                                                          PartitionKey partitionKey,
+                                                                          ETag eTag,
+                                                                          CancellationToken cancellationToken)
+    {
+        using var response =
+            await container.DeleteItemStreamAsync(id.ToString(),
+                                                  partitionKey,
+                                                  new ItemRequestOptions
+                                                  {
+                                                      IfMatchEtag = eTag.ToString()
+                                                  },
+                                                  cancellationToken);
 
-    public static Eff<Either<CosmosError, Unit>> DeleteRecord(
-        Container container,
-        CosmosId id,
-        PartitionKey partitionKey,
-        ETag eTag
-    ) =>
-        from cancellationToken in cancelTokenEff
-        from result in liftEff(async () =>
+        switch (response.StatusCode)
         {
-            using var response = await container.DeleteItemStreamAsync(
-                id.ToString(),
-                partitionKey,
-                new ItemRequestOptions { IfMatchEtag = eTag.ToString() },
-                cancellationToken
-            );
-
-            switch (response.StatusCode)
-            {
-                case HttpStatusCode.PreconditionFailed:
-                    return Either<CosmosError, Unit>.Left(CosmosError.ETagMismatch.Instance);
-                default:
-                    response.EnsureSuccessStatusCode();
-                    return Unit.Default;
-            }
-        })
-        select result;
+            case HttpStatusCode.PreconditionFailed:
+                return CosmosError.ETagMismatch.Instance;
+            case HttpStatusCode.NotFound:
+                return Unit.Default;
+            default:
+                response.EnsureSuccessStatusCode();
+                return Unit.Default;
+        }
+    }
 
     public static OpenTelemetryBuilder ConfigureTelemetry(OpenTelemetryBuilder builder)
     {
