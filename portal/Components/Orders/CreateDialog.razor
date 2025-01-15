@@ -1,0 +1,75 @@
+﻿@using common
+@using LanguageExt
+
+<FluentDialogHeader ShowDismiss="true">
+    <FluentStack VerticalAlignment="VerticalAlignment.Center">
+        <FluentLabel Typo="Typography.PaneHeader">
+            Create order
+        </FluentLabel>
+    </FluentStack>
+</FluentDialogHeader>
+
+<FluentDialogBody>
+    <FluentEditForm EditContext="editContext">
+        <FluentStack Orientation="Orientation.Vertical">
+            <div>
+                <FluentRadioGroup @bind-Value="@formModel.Size"
+                                  Label="Select a size"
+                                  Required>
+                    @foreach (var size in availableSizes)
+                    {
+                        <FluentRadio Value="@size">@size</FluentRadio>
+                    }
+                </FluentRadioGroup>
+                <FluentValidationMessage For="() => formModel.Size" />
+            </div>
+            <div>
+                <FluentLabel>Select toppings</FluentLabel>
+                <FluentDataGrid Items="@(formModel.Toppings.AsQueryable())"
+                                GenerateHeader="GenerateHeaderOption.None">
+                    <PropertyColumn Property="@(x => x.Key.ToString())" Class="label" Width="25%" />
+                    <TemplateColumn Context="templateContext">
+                        <FluentRadioGroup Value="@templateContext.Value" ValueChanged="@(value => formModel.Toppings[templateContext.Key] = value)" TValue="string">
+                            @foreach (var toppingAmount in availableToppingAmounts)
+                            {
+                                <FluentRadio Value="@toppingAmount">@toppingAmount</FluentRadio>
+                            }
+                        </FluentRadioGroup>
+                    </TemplateColumn>
+                </FluentDataGrid>
+            </div>
+            <FluentValidationMessage For="() => formModel.Toppings"  />
+        </FluentStack>
+    </FluentEditForm>
+    @*     <FluentCard Style="height:auto">
+        <h5>Select a size</h5>
+        <FluentRadioGroup @bind-Value="@selectedSize"
+                          Label="Select a size"
+                          Required>
+            @foreach (var size in availableSizes)
+            {
+                <FluentRadio Value="@size">@size</FluentRadio>
+            }
+        </FluentRadioGroup>
+    </FluentCard>
+    <FluentCard Style="height:auto">
+        <h5>Select toppings</h5>
+        <FluentDataGrid Items="@(toppings.AsQueryable())"
+                        GenerateHeader="GenerateHeaderOption.None">
+            <PropertyColumn Property="@(x => x.Key.ToString())" Class="label" Width="25%" />
+            <TemplateColumn>
+                <FluentRadioGroup Value="@context.Value" ValueChanged="@(value => toppings[context.Key] = value)" TValue="string">
+                    @foreach (var toppingAmount in availableToppingAmounts)
+                    {
+                        <FluentRadio Value="@toppingAmount">@toppingAmount</FluentRadio>
+                    }
+                </FluentRadioGroup>
+            </TemplateColumn>
+        </FluentDataGrid>
+    </FluentCard> *@
+</FluentDialogBody>
+
+<FluentDialogFooter>
+    <FluentButton Appearance="Appearance.Accent" OnClick="@OnCreateButtonClicked">Create</FluentButton>
+    <FluentButton Appearance="Appearance.Neutral" OnClick="@OnCancelButtonClicked">Cancel</FluentButton>
+</FluentDialogFooter>

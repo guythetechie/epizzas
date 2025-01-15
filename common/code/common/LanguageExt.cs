@@ -1,4 +1,5 @@
 ﻿using LanguageExt;
+using LanguageExt.Common;
 using LanguageExt.Traits;
 using System;
 using System.Threading;
@@ -69,4 +70,11 @@ public static class OptionExtensions
         var option = await optionTask;
         return await option.Or(alternative);
     }
+}
+
+public static class FinModule
+{
+    public static Either<L, R> ToEither<L, R>(this Fin<R> fin, Func<Error, L> mapError) =>
+        fin.ToEither()
+           .MapLeft(mapError);
 }

@@ -86,8 +86,9 @@ public static class CosmosModule
         select cosmosId;
 
     public static JsonResult<ETag> GetETag(JsonObject jsonObject) =>
-        from eTag in jsonObject.GetStringProperty("_etag")
-        select new ETag(eTag);
+        from eTagString in jsonObject.GetStringProperty("_etag")
+        from eTag in JsonResult.Lift(ETag.From(eTagString))
+        select eTag;
 
     public static Eff<ImmutableArray<JsonObject>> GetQueryResults(
         Container container,
@@ -114,8 +115,8 @@ public static class CosmosModule
         Eff<ImmutableArray<JsonObject>> getResults(ImmutableArray<JsonObject> jsonObjects) =>
             from results in iterator.HasMoreResults
                 ? from currentPageResults in GetCurrentPageResults(iterator)
-                from nextImmutableArray in getResults([.. jsonObjects, .. currentPageResults.Documents])
-                select nextImmutableArray
+                  from nextImmutableArray in getResults([.. jsonObjects, .. currentPageResults.Documents])
+                  select nextImmutableArray
                 : SuccessEff(jsonObjects)
             select results;
 

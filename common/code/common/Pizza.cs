@@ -1,4 +1,5 @@
 ﻿using LanguageExt;
+using LanguageExt.Common;
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
@@ -30,18 +31,22 @@ public abstract record PizzaToppingKind
         public override string ToString() => nameof(Sausage);
     }
 
+    public static Fin<PizzaToppingKind> From(string value) => value switch
+    {
+        _ when value.Equals(nameof(Pepperoni), StringComparison.OrdinalIgnoreCase) => Pepperoni.Instance,
+        _ when value.Equals(nameof(Cheese), StringComparison.OrdinalIgnoreCase) => Cheese.Instance,
+        _ when value.Equals(nameof(Sausage), StringComparison.OrdinalIgnoreCase) => Sausage.Instance,
+        _ => Error.New($"'{value}' is not a valid pizza topping kind.")
+    };
+
     public static JsonValue Serialize(PizzaToppingKind kind) => JsonValue.Create(kind.ToString());
 
     public static JsonResult<PizzaToppingKind> Deserialize(JsonNode? json) =>
         from jsonValue in json.AsJsonValue()
         from value in jsonValue.AsString()
-        from kind in value switch
-        {
-            _ when value.Equals(nameof(Pepperoni), StringComparison.OrdinalIgnoreCase) => JsonResult.Succeed<PizzaToppingKind>(Pepperoni.Instance),
-            _ when value.Equals(nameof(Cheese), StringComparison.OrdinalIgnoreCase) => JsonResult.Succeed<PizzaToppingKind>(Cheese.Instance),
-            _ when value.Equals(nameof(Sausage), StringComparison.OrdinalIgnoreCase) => JsonResult.Succeed<PizzaToppingKind>(Sausage.Instance),
-            _ => JsonResult.Fail<PizzaToppingKind>($"'{value}' is not a valid pizza topping kind.")
-        }
+        from kind in PizzaToppingKind.From(value)
+                                     .Match(JsonResult.Succeed,
+                                            error => JsonResult.Fail<PizzaToppingKind>(error.Message))
         select kind;
 }
 
@@ -68,18 +73,23 @@ public abstract record PizzaToppingAmount
         public override string ToString() => nameof(Extra);
     }
 
+    public static Fin<PizzaToppingAmount> From(string value) =>
+        value switch
+        {
+            _ when value.Equals(nameof(Light), StringComparison.OrdinalIgnoreCase) => Light.Instance,
+            _ when value.Equals(nameof(Normal), StringComparison.OrdinalIgnoreCase) => Normal.Instance,
+            _ when value.Equals(nameof(Extra), StringComparison.OrdinalIgnoreCase) => Extra.Instance,
+            _ => Error.New($"'{value}' is not a valid pizza topping amount.")
+        };
+
     public static JsonValue Serialize(PizzaToppingAmount amount) => JsonValue.Create(amount.ToString());
 
     public static JsonResult<PizzaToppingAmount> Deserialize(JsonNode? json) =>
         from jsonValue in json.AsJsonValue()
         from value in jsonValue.AsString()
-        from amount in value switch
-        {
-            _ when value.Equals(nameof(Light), StringComparison.OrdinalIgnoreCase) => JsonResult.Succeed<PizzaToppingAmount>(Light.Instance),
-            _ when value.Equals(nameof(Normal), StringComparison.OrdinalIgnoreCase) => JsonResult.Succeed<PizzaToppingAmount>(Normal.Instance),
-            _ when value.Equals(nameof(Extra), StringComparison.OrdinalIgnoreCase) => JsonResult.Succeed<PizzaToppingAmount>(Extra.Instance),
-            _ => JsonResult.Fail<PizzaToppingAmount>($"'{value}' is not a valid pizza topping amount.")
-        }
+        from amount in PizzaToppingAmount.From(value)
+                                         .Match(JsonResult.Succeed,
+                                                error => JsonResult.Fail<PizzaToppingAmount>(error.Message))
         select amount;
 }
 
@@ -106,18 +116,23 @@ public abstract record PizzaSize
         public override string ToString() => nameof(Large);
     }
 
+    public static Fin<PizzaSize> From(string value) =>
+        value switch
+        {
+            _ when value.Equals(nameof(Small), StringComparison.OrdinalIgnoreCase) => Small.Instance,
+            _ when value.Equals(nameof(Medium), StringComparison.OrdinalIgnoreCase) => Medium.Instance,
+            _ when value.Equals(nameof(Large), StringComparison.OrdinalIgnoreCase) => Large.Instance,
+            _ => Error.New($"'{value}' is not a valid pizza size.")
+        };
+
     public static JsonValue Serialize(PizzaSize size) => JsonValue.Create(size.ToString());
 
     public static JsonResult<PizzaSize> Deserialize(JsonNode? json) =>
         from jsonValue in json.AsJsonValue()
         from value in jsonValue.AsString()
-        from size in value switch
-        {
-            _ when value.Equals(nameof(Small), StringComparison.OrdinalIgnoreCase) => JsonResult.Succeed<PizzaSize>(Small.Instance),
-            _ when value.Equals(nameof(Medium), StringComparison.OrdinalIgnoreCase) => JsonResult.Succeed<PizzaSize>(Medium.Instance),
-            _ when value.Equals(nameof(Large), StringComparison.OrdinalIgnoreCase) => JsonResult.Succeed<PizzaSize>(Large.Instance),
-            _ => JsonResult.Fail<PizzaSize>($"'{value}' is not a valid pizza size.")
-        }
+        from size in PizzaSize.From(value)
+                            .Match(JsonResult.Succeed,
+                                   error => JsonResult.Fail<PizzaSize>(error.Message))
         select size;
 }
 

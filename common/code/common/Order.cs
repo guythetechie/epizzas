@@ -106,14 +106,14 @@ public abstract record OrderStatus
 
     public static JsonResult<OrderStatus> Deserialize(JsonNode? json) =>
         from jsonObject in json.AsJsonObject()
-        from name in jsonObject.GetStringProperty("name")
-        from status in name switch
+        from statusName in jsonObject.GetStringProperty("name")
+        from status in statusName switch
         {
             nameof(Created) => from status in Created.Deserialize(jsonObject)
                                select status as OrderStatus,
             nameof(Cancelled) => from status in Cancelled.Deserialize(jsonObject)
                                  select status as OrderStatus,
-            _ => JsonResult.Fail<OrderStatus>($"Order status {name} is not supported.")
+            _ => JsonResult.Fail<OrderStatus>($"Order status {statusName} is not supported.")
         }
         select status;
 }

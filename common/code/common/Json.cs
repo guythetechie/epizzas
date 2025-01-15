@@ -171,6 +171,25 @@ public static class JsonNodeModule
             _ => JsonResult.Fail<JsonValue>("JSON node is not a JSON value.")
         };
 
+    public static Eff<JsonResult<JsonNode>> FromStream(Stream? stream, JsonNodeOptions? options = null) =>
+        liftIO(async env =>
+        {
+            if (stream is null)
+            {
+                return JsonResult.Fail<JsonNode>("Stream is null.");
+            }
+
+            var node = await JsonNode.ParseAsync(stream, options, cancellationToken: env.Token);
+
+            return node is null
+                        ? JsonResult.Fail<JsonNode>("Deserialization return a null result.")
+                        : JsonResult.Succeed(node);
+        })
+        .Catch(error => error.ToException() is JsonException jsonException
+                            ? IO.pure(JsonResult.Fail<JsonNode>(JsonError.From(jsonException)))
+                            : IO.fail<JsonResult<JsonNode>>(error))
+        .As();
+
     public static Eff<JsonResult<T>> Deserialize<T>(Stream? stream, JsonSerializerOptions? options = default) =>
         stream switch
         {
@@ -523,4 +542,7 @@ public static class JsonResultExtensions
 
     public static Eff<T> ToEff<T>(this K<JsonResult, T> k) =>
         k.ToFin().ToEff();
+
+    public static Either<L, R> ToEither<L, R>(this K<JsonResult, R> k, Func<JsonError, L> mapError) =>
+        k.As().Match(Either<L, R>.Right, error => Either<L, R>.Left(mapError(error)));
 }

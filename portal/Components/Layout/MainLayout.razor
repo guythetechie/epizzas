@@ -1,0 +1,25 @@
+﻿@using Microsoft.FluentUI.AspNetCore.Components.DesignTokens
+@inherits LayoutComponentBase
+
+@Body
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@inject BodyFont Font
+
+<FluentDialogProvider @rendermode=RenderMode.InteractiveServer />
+<FluentToastProvider />
+<FluentTooltipProvider />
+<FluentMessageBarProvider />
+<FluentMenuProvider />
+
+@code {
+    protected override void OnInitialized()
+    {
+        Font.WithDefault("Comic Sans MS");
+    }
+}

@@ -1,0 +1,24 @@
+﻿@using System.Collections.Frozen
+@using System.Threading
+@using common
+@attribute [StreamRendering]
+
+<div style="height: 600px; overflow:auto;" tabindex="-1">
+    <FluentDataGrid Loading="@gridIsLoading"
+                    ItemsProvider="@itemsProvider"
+                    Virtualize
+                    ItemSize="40"
+                    GenerateHeader="GenerateHeaderOption.Sticky">
+        <ChildContent>
+            <PropertyColumn Title="ID" Property="@(item => item.Id)" />
+            <PropertyColumn Title="Status" Property="@(item => item.Id)" />
+            <PropertyColumn Title="Last modified by" Property="@(item => item.LastModifiedBy)" />
+            <TemplateColumn Title="Name">
+                <FluentTextField Value="@context.Id" />
+            </TemplateColumn>
+        </ChildContent>
+        <EmptyContent>
+            No orders found
+        </EmptyContent>
+    </FluentDataGrid>
+</div>

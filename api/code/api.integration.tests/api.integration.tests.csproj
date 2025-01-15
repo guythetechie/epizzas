@@ -14,7 +14,7 @@
 
 	<ItemGroup>
 		<PackageReference Include="Aspire.Microsoft.Azure.Cosmos" Version="9.0.0" />
-	  <PackageReference Include="FluentAssertions" Version="7.0.0-alpha.5" />
+	  <PackageReference Include="FluentAssertions" Version="8.0.0" />
 	</ItemGroup>
 
 	<ItemGroup>

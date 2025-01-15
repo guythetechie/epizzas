@@ -1,16 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Net;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Threading;
-using System.Threading.Tasks;
-using Aspire.Microsoft.Azure.Cosmos;
-using Azure;
+﻿using Aspire.Microsoft.Azure.Cosmos;
 using Azure.Core;
 using common;
 using LanguageExt;
@@ -23,9 +11,23 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
+
+using static LanguageExt.Prelude;
 
 namespace api;
 
+internal delegate DateTimeOffset GetCurrentTime();
 internal delegate Eff<Either<CosmosError, Unit>> CancelCosmosOrder(OrderId orderId, ETag eTag);
 internal delegate Eff<Either<CosmosError, Unit>> CreateCosmosOrder(Order order);
 internal delegate Eff<Option<(Order, ETag)>> FindCosmosOrder(OrderId orderId);
@@ -33,7 +35,8 @@ internal delegate Eff<ImmutableArray<(Order, ETag)>> ListCosmosOrders();
 
 internal static class OrdersModule
 {
-    public static void ConfigureBuilder(IHostApplicationBuilder builder) => BuilderModule.Configure(builder);
+    public static void ConfigureBuilder(IHostApplicationBuilder builder) =>
+        Module.Configure(builder);
 
     public static void ConfigureEndpoints(IEndpointRouteBuilder builder)
     {
@@ -64,27 +67,20 @@ file static class Handlers
         return await operation.Run(cancellationToken);
 
         static Either<IResult, OrderId> validateOrderId(string orderId) =>
-            OrderId
-                .From(orderId)
-                .ToEither()
-                .MapLeft(error =>
-                    Results.BadRequest(
-                        new { code = ApiErrorCode.InvalidRequestParameter.Instance.ToString(), message = error.Message }
-                    )
-                );
+            OrderId.From(orderId)
+                   .ToEither(error => Results.BadRequest(new
+                   {
+                       code = ApiErrorCode.InvalidRequestParameter.Instance.ToString(),
+                       message = error.Message
+                   }));
 
         static Either<IResult, ETag> getETag(string? ifMatch) =>
-            string.IsNullOrWhiteSpace(ifMatch)
-                ? Either<IResult, ETag>.Left(
-                    Results.BadRequest(
-                        new
-                        {
-                            code = ApiErrorCode.InvalidRequestHeader.Instance.ToString(),
-                            message = "If-Match header is required.",
-                        }
-                    )
-                )
-                : new ETag(ifMatch);
+            ETag.From(ifMatch)
+                .ToEither(error => Results.BadRequest(new
+                {
+                    code = ApiErrorCode.InvalidRequestHeader.Instance.ToString(),
+                    message = "If-Match header is required.",
+                }));
 
         static Eff<Either<IResult, Unit>> cancelOrder(
             OrderId orderId,
@@ -92,83 +88,67 @@ file static class Handlers
             CancelCosmosOrder cancelCosmosOrder
         ) =>
             from result in cancelCosmosOrder(orderId, eTag)
-            select result.MapLeft(error =>
-                Results.Json(
-                    new
-                    {
-                        code = ApiErrorCode.ETagMismatch.Instance.ToString(),
-                        message = $"Could not cancel order '{orderId}'. Another process might have modified the resource. Please try again.",
-                    },
+            select result.Match(error => error switch
+            {
+                CosmosError.NotFound => Either<IResult, Unit>.Right(Unit.Default),
+                CosmosError.ETagMismatch => Either<IResult, Unit>.Left(Results.Json(new
+                {
+                    code = ApiErrorCode.ETagMismatch.Instance.ToString(),
+                    message = $"Could not cancel order '{orderId}'. Another process might have modified the resource. Please try again.",
+                },
                     statusCode: (int)HttpStatusCode.PreconditionFailed
-                )
-            );
+                )),
+                _ => throw error.ToException()
+            }, _ => Unit.Default);
 
         static IResult getSuccessfulResponse() => Results.NoContent();
     }
 
     public static async ValueTask<IResult> Create(
         [FromServices] CreateCosmosOrder createCosmosOrder,
-        [FromServices] TimeProvider timeProvider,
-        string orderId,
+        [FromServices] GetCurrentTime getCurrentTime,
         Stream? body,
         CancellationToken cancellationToken
     )
     {
         var operation =
-            from order in ApiOperation.Lift(parseOrder(orderId, body, timeProvider))
+            from order in ApiOperation.Lift(parseOrder(body, getCurrentTime))
             from _ in ApiOperation.Lift(createOrder(createCosmosOrder, order))
             select getSuccessfulResponse();
 
         return await operation.Run(cancellationToken);
 
-        static Eff<Either<IResult, Order>> parseOrder(string orderId, Stream? body, TimeProvider timeProvider) =>
-            from cancellationToken in Prelude.cancelTokenEff
-            from data in Prelude.liftEff(
-                async () => body is null ? null : await BinaryData.FromStreamAsync(body, cancellationToken)
-            )
-            let orderResult = from jsonObject in JsonNodeModule.Deserialize<JsonObject>(data)
-            let status = new OrderStatus.Created { Date = timeProvider.GetUtcNow(), By = "system" }
-            let statusJson = OrderStatus.Serialize(status)
-            let orderJson = jsonObject.SetProperty("orderId", orderId).SetProperty("status", statusJson)
-            from order in Order.Deserialize(orderJson)
-            select order
-            select orderResult.Match(
-                Either<IResult, Order>.Right,
-                error =>
-                    Either<IResult, Order>.Left(
-                        Results.BadRequest(
-                            new
-                            {
-                                code = ApiErrorCode.InvalidRequestBody.Instance.ToString(),
-                                message = error.ToException().InnerException switch
-                                {
-                                    AggregateException => "Request body is invalid.",
-                                    _ => error.Message,
-                                },
-                                details = error.ToException().InnerException switch
-                                {
-                                    not AggregateException => Array.Empty<string>(),
-                                    AggregateException aggregateException =>
-                                    [
-                                        .. aggregateException.InnerExceptions.Select(exception => exception.Message),
-                                    ],
-                                },
-                            }
-                        )
-                    )
-            );
+        static Eff<Either<IResult, Order>> parseOrder(Stream? body, GetCurrentTime getCurrentTime) =>
+            from result in JsonNodeModule.FromStream(body)
+            let orderResult = from jsonNode in result
+                              from jsonObject in jsonNode.AsJsonObject()
+                              let status = new OrderStatus.Created
+                              {
+                                  Date = getCurrentTime(),
+                                  By = "system"
+                              }
+                              let statusJson = OrderStatus.Serialize(status)
+                              let orderJson = jsonObject.SetProperty("status", statusJson)
+                              from order in Order.Deserialize(orderJson)
+                              select order
+            select orderResult.ToEither(error => Results.BadRequest(new
+            {
+                code = ApiErrorCode.InvalidRequestBody.Instance.ToString(),
+                message = error.Message,
+                details = (string[])[.. error.Details.Select(error => error.Message)]
+            }));
 
         static Eff<Either<IResult, Unit>> createOrder(CreateCosmosOrder createCosmosOrder, Order order) =>
             from either in createCosmosOrder(order)
-            select either.MapLeft(_ =>
-                Results.Conflict(
-                    new
-                    {
-                        code = ApiErrorCode.ResourceAlreadyExists.Instance.ToString(),
-                        message = $"Order with ID {order.Id} already exists.",
-                    }
-                )
-            );
+            select either.MapLeft(error => error switch
+            {
+                CosmosError.AlreadyExists or CosmosError.ETagMismatch => Results.Conflict(new
+                {
+                    code = ApiErrorCode.ResourceAlreadyExists.Instance.ToString(),
+                    message = $"Order with ID {order.Id} already exists.",
+                }),
+                _ => throw error.ToException()
+            });
 
         static IResult getSuccessfulResponse() => Results.NoContent();
     }
@@ -188,37 +168,28 @@ file static class Handlers
         return await operation.Run(cancellationToken);
 
         static Either<IResult, OrderId> validateOrderId(string orderId) =>
-            OrderId
-                .From(orderId)
-                .ToEither()
-                .MapLeft(error =>
-                    Results.BadRequest(
-                        new { code = ApiErrorCode.InvalidRequestParameter.Instance.ToString(), message = error.Message }
-                    )
-                );
+            OrderId.From(orderId)
+                   .ToEither(error => Results.BadRequest(new
+                   {
+                       code = ApiErrorCode.InvalidRequestParameter.Instance.ToString(),
+                       message = error.Message
+                   }));
 
         static Eff<Either<IResult, (Order, ETag)>> getOrder(OrderId orderId, FindCosmosOrder findCosmosOrder) =>
             from option in findCosmosOrder(orderId)
-            select option.ToEither(
-                () =>
-                    Results.NotFound(
-                        new
-                        {
-                            code = ApiErrorCode.ResourceNotFound.Instance.ToString(),
-                            message = $"Order with ID {orderId} was not found.",
-                        }
-                    )
-            );
+            select option.ToEither(() => Results.NotFound(new
+            {
+                code = ApiErrorCode.ResourceNotFound.Instance.ToString(),
+                message = $"Order with ID {orderId} was not found.",
+            }));
 
         static IResult getSuccessfulResponse(Order order, ETag eTag) =>
-            Results.Ok(
-                new JsonObject
-                {
-                    ["eTag"] = eTag.ToString(),
-                    ["status"] = OrderStatus.Serialize(order.Status),
-                    ["pizzas"] = order.Pizzas.Select(Pizza.Serialize).ToJsonArray(),
-                }
-            );
+            Results.Ok(new JsonObject
+            {
+                ["eTag"] = eTag.ToString(),
+                ["status"] = OrderStatus.Serialize(order.Status),
+                ["pizzas"] = order.Pizzas.Select(Pizza.Serialize).ToJsonArray(),
+            });
     }
 
     public static async ValueTask<IResult> List(
@@ -226,37 +197,57 @@ file static class Handlers
         CancellationToken cancellationToken
     )
     {
-        var operation = from orders in ApiOperation.Lift(listCosmosOrders()) select getSuccessfulResponse(orders);
+        var operation = from orders in ApiOperation.Lift(listCosmosOrders())
+                        select getSuccessfulResponse(orders);
 
         return await operation.Run(cancellationToken);
 
         static IResult getSuccessfulResponse(IEnumerable<(Order, ETag)> orders) =>
-            Results.Ok(
-                new JsonObject
-                {
-                    ["value"] = orders
-                        .Select(order => Order.Serialize(order.Item1).SetProperty("eTag", order.Item2.ToString()))
-                        .ToJsonArray(),
-                }
-            );
+            Results.Ok(new JsonObject
+            {
+                ["values"] = orders.Select(order => Order.Serialize(order.Item1)
+                                                         .SetProperty("eTag", order.Item2.ToString()))
+                                   .ToJsonArray(),
+            });
     }
 }
 
-file static class BuilderModule
+file static class Module
 {
     public static void Configure(IHostApplicationBuilder builder)
     {
-        builder.Services.TryAddSingleton(TimeProvider.System);
+        ConfigureGetCurrentTime(builder);
         ConfigureCancelCosmosOrder(builder);
         ConfigureCreateCosmosOrder(builder);
         ConfigureFindCosmosOrder(builder);
         ConfigureListCosmosOrders(builder);
     }
 
+    private static void ConfigureGetCurrentTime(IHostApplicationBuilder builder)
+    {
+        builder.Services.TryAddSingleton(GetGetCurrentTime);
+    }
+
+    private static GetCurrentTime GetGetCurrentTime(IServiceProvider provider)
+    {
+        var activitySource = provider.GetRequiredService<ActivitySource>();
+
+        return () =>
+        {
+            var activity = activitySource.StartActivity(nameof(GetCurrentTime));
+
+            var time = DateTimeOffset.UtcNow;
+
+            activity?.AddTag(nameof(time), time);
+
+            return time;
+        };
+    }
+
     private static void ConfigureCancelCosmosOrder(IHostApplicationBuilder builder)
     {
         CosmosModule.ConfigureOrdersContainer(builder);
-        api.CommonModule.ConfigureTimeProvider(builder);
+        ConfigureGetCurrentTime(builder);
 
         builder.Services.TryAddSingleton(GetCancelCosmosOrder);
     }
@@ -264,17 +255,26 @@ file static class BuilderModule
     private static CancelCosmosOrder GetCancelCosmosOrder(IServiceProvider provider)
     {
         var container = provider.GetRequiredKeyedService<Container>(CosmosModule.OrdersContainerIdentifier);
-        var timeProvider = provider.GetRequiredService<TimeProvider>();
+        var getCurrentTime = provider.GetRequiredService<GetCurrentTime>();
         var activitySource = provider.GetRequiredService<ActivitySource>();
 
         return (orderId, eTag) =>
-        {
-            using var _ = activitySource.StartActivity("cosmos.cancel_order")?.AddTag("order_id", orderId);
+            liftIO(async env =>
+            {
+                using var activity = activitySource.StartActivity(nameof(CancelCosmosOrder))
+                                                  ?.AddTag(nameof(orderId), orderId)
+                                                  ?.AddTag(nameof(eTag), eTag);
 
-            return from option in findOrder(orderId)
-                from result in option.Traverse(cosmosId => cancelOrder(cosmosId, orderId, eTag))
-                select result.IfNone(() => Unit.Default);
-        };
+                var resultEff = from option in findOrder(orderId)
+                                from result in option.Traverse(cosmosId => cancelOrder(cosmosId, orderId, eTag))
+                                select result.IfNone(() => Unit.Default);
+
+                var either = await resultEff.RunUnsafe(env.Token);
+
+                activity?.AddTag(nameof(either), either);
+
+                return either;
+            });
 
         Eff<Option<CosmosId>> findOrder(OrderId orderId)
         {
@@ -290,15 +290,19 @@ file static class BuilderModule
             };
 
             return from queryResults in common.CosmosModule.GetQueryResults(container, query)
-                let firstResultOption = queryResults.HeadOrNone()
-                from cosmosId in firstResultOption.Traverse(json => common.CosmosModule.GetCosmosId(json).ToEff())
-                select cosmosId;
+                   let firstResultOption = queryResults.HeadOrNone()
+                   from cosmosId in firstResultOption.Traverse(json => common.CosmosModule.GetCosmosId(json).ToEff())
+                   select cosmosId;
         }
 
         Eff<Either<CosmosError, Unit>> cancelOrder(CosmosId cosmosId, OrderId orderId, ETag eTag)
         {
             var partitionKey = common.CosmosModule.GetPartitionKey(orderId);
-            var status = new OrderStatus.Cancelled { By = "system", Date = timeProvider.GetUtcNow() };
+            var status = new OrderStatus.Cancelled
+            {
+                By = "system",
+                Date = getCurrentTime()
+            };
             var statusJson = OrderStatus.Serialize(status);
             var jObject = Newtonsoft.Json.Linq.JObject.Parse(statusJson.ToJsonString());
 
@@ -325,15 +329,21 @@ file static class BuilderModule
         var activitySource = provider.GetRequiredService<ActivitySource>();
 
         return order =>
-        {
-            using var _ = activitySource.StartActivity("cosmos.create_order")?.AddTag("order_id", order.Id);
+            liftIO(async env =>
+            {
+                using var activity = activitySource.StartActivity(nameof(CreateCosmosOrder))
+                                                  ?.AddTag(nameof(order), Order.Serialize(order));
 
-            var cosmosOrderId = Guid.CreateVersion7();
-            var orderJson = Order.Serialize(order).AsJsonObject().ThrowIfFail().SetProperty("id", cosmosOrderId);
-            var partitionKey = new PartitionKey(order.Id.ToString());
+                var orderJson = Order.Serialize(order);
+                var cosmosId = CosmosId.Generate();
+                orderJson = orderJson.SetProperty("id", cosmosId.ToString());
+                var partitionKey = common.CosmosModule.GetPartitionKey(order);
+                var result = await common.CosmosModule.CreateRecord(container, orderJson, partitionKey).RunUnsafe(env.Token);
 
-            return common.CosmosModule.CreateRecord(container, orderJson, partitionKey);
-        };
+                activity?.AddTag(nameof(result), result);
+
+                return result;
+            });
     }
 
     private static void ConfigureFindCosmosOrder(IHostApplicationBuilder builder)
@@ -349,27 +359,35 @@ file static class BuilderModule
         var activitySource = provider.GetRequiredService<ActivitySource>();
 
         return orderId =>
-        {
-            using var _ = activitySource.StartActivity("cosmos.find_order")?.AddTag("order_id", orderId);
-
-            var query = new CosmosQueryOptions
+            liftIO(async env =>
             {
-                Query = new QueryDefinition(
-                    """
-                    SELECT c.orderId, c.status, c.pizzas, c._etag
-                    FROM c
-                    WHERE c.orderId = @orderId
-                    """
-                ).WithParameter("@orderId", orderId.ToString()),
-            };
+                using var activity = activitySource.StartActivity(nameof(FindCosmosOrder))
+                                                  ?.AddTag(nameof(orderId), orderId);
 
-            return from queryResults in common.CosmosModule.GetQueryResults(container, query)
-                let option = from json in queryResults.HeadOrNone()
-                let eTag = common.CosmosModule.GetETag(json).ThrowIfFail()
-                let order = Order.Deserialize(json).ThrowIfFail()
-                select (order, eTag)
-                select option;
-        };
+                var query = new CosmosQueryOptions
+                {
+                    Query = new QueryDefinition(
+                        """
+                        SELECT c.orderId, c.status, c.pizzas, c._etag
+                        FROM c
+                        WHERE c.orderId = @orderId
+                        """
+                    ).WithParameter("@orderId", orderId.ToString()),
+                };
+
+                var resultEff = from queryResults in common.CosmosModule.GetQueryResults(container, query)
+                                let option = from json in queryResults.HeadOrNone()
+                                             let eTag = common.CosmosModule.GetETag(json).ThrowIfFail()
+                                             let order = Order.Deserialize(json).ThrowIfFail()
+                                             select (order, eTag)
+                                select option;
+
+                var result = await resultEff.RunUnsafe(env.Token);
+
+                activity?.AddTag(nameof(result), result);
+
+                return result;
+            });
     }
 
     private static void ConfigureListCosmosOrders(IHostApplicationBuilder builder)
@@ -385,25 +403,32 @@ file static class BuilderModule
         var activitySource = provider.GetRequiredService<ActivitySource>();
 
         return () =>
-        {
-            using var _ = activitySource.StartActivity("cosmos.list_orders");
-
-            var query = new CosmosQueryOptions
+            liftIO(async env =>
             {
-                Query = new QueryDefinition("SELECT c.orderId, c.status, c.pizzas, c._etag FROM c"),
-            };
+                using var activity = activitySource.StartActivity(nameof(ListCosmosOrders));
 
-            return from queryResults in common.CosmosModule.GetQueryResults(container, query)
-                from orders in queryResults
-                    .AsIterable()
-                    .Traverse(jsonObject =>
-                        from eTag in common.CosmosModule.GetETag(jsonObject)
-                        from order in Order.Deserialize(jsonObject)
-                        select (order, eTag)
-                    )
-                    .ToEff()
-                select orders.ToImmutableArray();
-        };
+                var query = new CosmosQueryOptions
+                {
+                    Query = new QueryDefinition("SELECT c.orderId, c.status, c.pizzas, c._etag FROM c"),
+                };
+
+                var resultEff = from queryResults in common.CosmosModule.GetQueryResults(container, query)
+                                from orders in queryResults
+                                    .AsIterable()
+                                    .Traverse(jsonObject =>
+                                        from eTag in common.CosmosModule.GetETag(jsonObject)
+                                        from order in Order.Deserialize(jsonObject)
+                                        select (order, eTag)
+                                    )
+                                    .ToEff()
+                                select orders.ToImmutableArray();
+
+                var result = await resultEff.RunUnsafe(env.Token);
+
+                activity?.AddSerializedTag(nameof(result), result);
+
+                return result;
+            }); ;
     }
 }
 
