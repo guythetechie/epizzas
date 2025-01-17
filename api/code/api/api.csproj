@@ -26,7 +26,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<InternalsVisibleTo Include="$(AssemblyName).tests" />
+		<InternalsVisibleTo Include="$(AssemblyName).unit.tests" />
 	</ItemGroup>
 
 	<ItemGroup>

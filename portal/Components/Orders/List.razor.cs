@@ -11,9 +11,9 @@ namespace portal.Components.Orders;
 
 public partial class List(ListOrders listOrders) : ComponentBase
 {
+    private FluentDataGrid<GridItem>? gridComponent;
     private FrozenDictionary<OrderId, (Order, ETag)> orders = FrozenDictionary<OrderId, (Order, ETag)>.Empty;
     private GridItemsProvider<GridItem>? itemsProvider;
-    private bool gridIsLoading;
 
     protected override void OnInitialized()
     {
@@ -22,14 +22,10 @@ public partial class List(ListOrders listOrders) : ComponentBase
 
     private async ValueTask<GridItemsProviderResult<GridItem>> GetProvider(GridItemsProviderRequest<GridItem> request)
     {
-        gridIsLoading = true;
-        StateHasChanged();
         await PopulateOrders(request.CancellationToken);
 
         var items = orders.Values.Select(x => GridItem.From(x.Item1));
         var count = orders.Count;
-        gridIsLoading = false;
-        StateHasChanged();
 
         return GridItemsProviderResult.From([.. items], count);
     }
@@ -39,6 +35,14 @@ public partial class List(ListOrders listOrders) : ComponentBase
         var ordersDictionary = await listOrders(cancellationToken).ToDictionaryAsync(x => x.Order.Id, cancellationToken);
 
         orders = ordersDictionary.ToFrozenDictionary();
+    }
+
+    public async ValueTask Refresh()
+    {
+        if (gridComponent is not null)
+        {
+            await gridComponent.RefreshDataAsync();
+        }
     }
 
     private sealed record GridItem

@@ -1,53 +1,43 @@
-﻿using Aspire.Microsoft.Azure.Cosmos;
-using Azure.Core;
-using common;
+﻿using common;
 using LanguageExt;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using Microsoft.Azure.Cosmos;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
-using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace api;
 
-internal delegate DateTimeOffset GetCurrentTime();
-internal delegate ValueTask<Either<CosmosError, Unit>> CancelCosmosOrder(OrderId orderId, ETag eTag, CancellationToken cancellationToken);
-internal delegate ValueTask<Either<CosmosError, Unit>> CreateCosmosOrder(Order order, CancellationToken cancellationToken);
-internal delegate ValueTask<Option<(Order, ETag)>> FindCosmosOrder(OrderId orderId, CancellationToken cancellationToken);
-internal delegate ValueTask<ImmutableArray<(Order, ETag)>> ListCosmosOrders(CancellationToken cancellationToken);
-
 internal static class OrdersModule
 {
-    public static void ConfigureBuilder(IHostApplicationBuilder builder) =>
-        Module.Configure(builder);
+    public static void ConfigureBuilder(IHostApplicationBuilder builder)
+    {
+        CommonModule.ConfigureGetCurrentTime(builder);
+        CosmosModule.ConfigureCancelCosmosOrder(builder);
+        CosmosModule.ConfigureCreateCosmosOrder(builder);
+        CosmosModule.ConfigureFindCosmosOrder(builder);
+        CosmosModule.ConfigureListCosmosOrders(builder);
+    }
 
     public static void ConfigureEndpoints(IEndpointRouteBuilder builder)
     {
         var group = builder.MapGroup("/v1/orders");
 
-        group.MapDelete("/{orderId}", Handlers.Cancel);
-        group.MapPost("/", Handlers.Create);
-        group.MapGet("/{orderId}", Handlers.GetById);
-        group.MapGet("/", Handlers.List);
+        group.MapDelete("/{orderId}", OrderHandlers.Cancel);
+        group.MapPost("/", OrderHandlers.Create);
+        group.MapGet("/{orderId}", OrderHandlers.GetById);
+        group.MapGet("/", OrderHandlers.List);
     }
 }
 
-file static class Handlers
+internal static class OrderHandlers
 {
     public static async ValueTask<IResult> Cancel(string orderId,
                                                   [FromServices] CancelCosmosOrder cancelCosmosOrder,
@@ -216,294 +206,5 @@ file static class Handlers
                                                          .SetProperty("eTag", order.Item2.ToString()))
                                    .ToJsonArray(),
             });
-    }
-}
-
-file static class Module
-{
-    public static void Configure(IHostApplicationBuilder builder)
-    {
-        ConfigureGetCurrentTime(builder);
-        ConfigureCancelCosmosOrder(builder);
-        ConfigureCreateCosmosOrder(builder);
-        ConfigureFindCosmosOrder(builder);
-        ConfigureListCosmosOrders(builder);
-    }
-
-    private static void ConfigureGetCurrentTime(IHostApplicationBuilder builder)
-    {
-        builder.Services.TryAddSingleton(GetGetCurrentTime);
-    }
-
-    private static GetCurrentTime GetGetCurrentTime(IServiceProvider provider)
-    {
-        var activitySource = provider.GetRequiredService<ActivitySource>();
-
-        return () =>
-        {
-            var activity = activitySource.StartActivity(nameof(GetCurrentTime));
-
-            var time = DateTimeOffset.UtcNow;
-
-            activity?.AddTag(nameof(time), time);
-
-            return time;
-        };
-    }
-
-    private static void ConfigureCancelCosmosOrder(IHostApplicationBuilder builder)
-    {
-        CosmosModule.ConfigureOrdersContainer(builder);
-        ConfigureGetCurrentTime(builder);
-
-        builder.Services.TryAddSingleton(GetCancelCosmosOrder);
-    }
-
-    private static CancelCosmosOrder GetCancelCosmosOrder(IServiceProvider provider)
-    {
-        var container = provider.GetRequiredKeyedService<Container>(CosmosModule.OrdersContainerIdentifier);
-        var getCurrentTime = provider.GetRequiredService<GetCurrentTime>();
-        var activitySource = provider.GetRequiredService<ActivitySource>();
-
-        return async (orderId, eTag, cancellationToken) =>
-        {
-            using var activity = activitySource.StartActivity(nameof(CancelCosmosOrder))
-                                              ?.AddTag(nameof(orderId), orderId)
-                                              ?.AddTag(nameof(eTag), eTag);
-
-            var option = await findOrder(orderId, cancellationToken);
-
-            var resultOption = await option.MapTask(cosmosId => cancelOrder(cosmosId,
-                                                                            orderId,
-                                                                            eTag,
-                                                                            cancellationToken));
-            return resultOption.IfNone(Unit.Default);
-        };
-
-        async ValueTask<Option<CosmosId>> findOrder(OrderId orderId, CancellationToken cancellationToken)
-        {
-            var query = new CosmosQueryOptions
-            {
-                Query = new QueryDefinition(
-                    """
-                    SELECT c.id
-                    FROM c
-                    WHERE c.orderId = @orderId
-                    """
-                ).WithParameter("@orderId", orderId.ToString()),
-            };
-
-            return await common.CosmosModule.GetQueryResults(container, query, cancellationToken)
-                                            .Select(json => common.CosmosModule.GetCosmosId(json)
-                                                                               .ThrowIfFail())
-                                            .FirstOrNone(cancellationToken);
-        }
-
-        async ValueTask<Either<CosmosError, Unit>> cancelOrder(CosmosId cosmosId,
-                                                               OrderId orderId,
-                                                               ETag eTag,
-                                                               CancellationToken cancellationToken)
-        {
-            var partitionKey = common.CosmosModule.GetPartitionKey(orderId);
-
-            var status = new OrderStatus.Cancelled
-            {
-                By = "system",
-                Date = getCurrentTime()
-            };
-
-            var statusJson = OrderStatus.Serialize(status);
-            var jObject = Newtonsoft.Json.Linq.JObject.Parse(statusJson.ToJsonString());
-
-            return await common.CosmosModule.PatchRecord(container,
-                                                         cosmosId,
-                                                         partitionKey,
-                                                         [PatchOperation.Set("/status", jObject)],
-                                                         eTag,
-                                                         cancellationToken);
-        }
-    }
-
-    private static void ConfigureCreateCosmosOrder(IHostApplicationBuilder builder)
-    {
-        CosmosModule.ConfigureOrdersContainer(builder);
-
-        builder.Services.TryAddSingleton(GetCreateCosmosOrder);
-    }
-
-    private static CreateCosmosOrder GetCreateCosmosOrder(IServiceProvider provider)
-    {
-        var container = provider.GetRequiredKeyedService<Container>(CosmosModule.OrdersContainerIdentifier);
-        var activitySource = provider.GetRequiredService<ActivitySource>();
-
-        return async (order, cancellationToken) =>
-        {
-            using var activity = activitySource.StartActivity(nameof(CreateCosmosOrder))
-                                              ?.AddTag(nameof(order), Order.Serialize(order));
-
-            var orderJson = Order.Serialize(order);
-            var cosmosId = CosmosId.Generate();
-            orderJson = orderJson.SetProperty("id", cosmosId.ToString());
-            var partitionKey = common.CosmosModule.GetPartitionKey(order);
-            var result = await common.CosmosModule.CreateRecord(container, orderJson, partitionKey, cancellationToken);
-
-            activity?.AddTag(nameof(result), result);
-
-            return result;
-        };
-    }
-
-    private static void ConfigureFindCosmosOrder(IHostApplicationBuilder builder)
-    {
-        CosmosModule.ConfigureOrdersContainer(builder);
-
-        builder.Services.TryAddSingleton(GetFindCosmosOrder);
-    }
-
-    private static FindCosmosOrder GetFindCosmosOrder(IServiceProvider provider)
-    {
-        var container = provider.GetRequiredKeyedService<Container>(CosmosModule.OrdersContainerIdentifier);
-        var activitySource = provider.GetRequiredService<ActivitySource>();
-
-        return async (orderId, cancellationToken) =>
-        {
-            using var activity = activitySource.StartActivity(nameof(FindCosmosOrder))
-                                              ?.AddTag(nameof(orderId), orderId);
-
-            var query = new CosmosQueryOptions
-            {
-                Query = new QueryDefinition(
-                    """
-                    SELECT c.orderId, c.status, c.pizzas, c._etag
-                    FROM c
-                    WHERE c.orderId = @orderId
-                    """
-                ).WithParameter("@orderId", orderId.ToString()),
-            };
-
-
-            var option = await common.CosmosModule.GetQueryResults(container, query, cancellationToken)
-                                                  .Select(json => from order in Order.Deserialize(json)
-                                                                  from eTag in common.CosmosModule.GetETag(json)
-                                                                  select (order, eTag))
-                                                  .Select(result => result.ThrowIfFail())
-                                                  .FirstOrNone(cancellationToken);
-
-            activity?.AddTag(nameof(option), option);
-
-            return option;
-        };
-    }
-
-    private static void ConfigureListCosmosOrders(IHostApplicationBuilder builder)
-    {
-        CosmosModule.ConfigureOrdersContainer(builder);
-
-        builder.Services.TryAddSingleton(GetListCosmosOrders);
-    }
-
-    private static ListCosmosOrders GetListCosmosOrders(IServiceProvider provider)
-    {
-        var container = provider.GetRequiredKeyedService<Container>(CosmosModule.OrdersContainerIdentifier);
-        var activitySource = provider.GetRequiredService<ActivitySource>();
-
-        return async cancellationToken =>
-        {
-            using var activity = activitySource.StartActivity(nameof(ListCosmosOrders));
-
-            var query = new CosmosQueryOptions
-            {
-                Query = new QueryDefinition(
-                    """
-                    SELECT c.orderId, c.status, c.pizzas, c._etag
-                    FROM c
-                    """)
-            };
-
-
-            var results = await common.CosmosModule.GetQueryResults(container, query, cancellationToken)
-                                                   .Select(json => from order in Order.Deserialize(json)
-                                                                   from eTag in common.CosmosModule.GetETag(json)
-                                                                   select (order, eTag))
-                                                   .Select(result => result.ThrowIfFail())
-                                                   .ToImmutableArray(cancellationToken);
-
-            activity?.AddTag("resultCount", results.Length);
-
-            return results;
-        };
-    }
-}
-
-file static class CosmosModule
-{
-    public static string OrdersContainerIdentifier { get; } = nameof(OrdersContainerIdentifier);
-
-    public static void ConfigureOrdersContainer(IHostApplicationBuilder builder)
-    {
-        ConfigureDatabase(builder);
-
-        builder.Services.TryAddKeyedSingleton(OrdersContainerIdentifier, (provider, _) => GetOrdersContainer(provider));
-    }
-
-    private static Container GetOrdersContainer(IServiceProvider provider)
-    {
-        var database = provider.GetRequiredService<Database>();
-        var configuration = provider.GetRequiredService<IConfiguration>();
-
-        var containerName = configuration.GetValueOrThrow("COSMOS_ORDERS_CONTAINER_NAME");
-
-        return database.GetContainer(containerName);
-    }
-
-    private static void ConfigureDatabase(IHostApplicationBuilder builder)
-    {
-        ConfigureCosmosClient(builder);
-
-        builder.Services.TryAddSingleton(GetDatabase);
-    }
-
-    private static Database GetDatabase(IServiceProvider provider)
-    {
-        var client = provider.GetRequiredService<CosmosClient>();
-        var configuration = provider.GetRequiredService<IConfiguration>();
-
-        var databaseName = configuration.GetValueOrThrow("COSMOS_DATABASE_NAME");
-
-        return client.GetDatabase(databaseName);
-    }
-
-    private static void ConfigureCosmosClient(IHostApplicationBuilder builder)
-    {
-        AzureModule.ConfigureTokenCredential(builder);
-
-        var configuration = builder.Configuration;
-        var connectionName = configuration.GetValue("COSMOS_CONNECTION_NAME").IfNone(string.Empty);
-        var provider = builder.Services.BuildServiceProvider();
-
-        builder.AddAzureCosmosClient(connectionName, configureSettings, configureClientOptions);
-
-        void configureSettings(MicrosoftAzureCosmosSettings settings)
-        {
-            configuration
-                .GetValue("COSMOS_ACCOUNT_ENDPOINT")
-                .Map(endpoint => new Uri(endpoint, UriKind.Absolute))
-                .Iter(endpoint =>
-                {
-                    settings.AccountEndpoint = endpoint;
-                    settings.Credential = provider.GetRequiredService<TokenCredential>();
-                });
-
-            configuration
-                .GetValue("COSMOS_CONNECTION_STRING")
-                .Iter(connectionString => settings.ConnectionString = connectionString);
-        }
-
-        void configureClientOptions(CosmosClientOptions options)
-        {
-            options.EnableContentResponseOnWrite = false;
-            options.UseSystemTextJsonSerializerWithOptions = JsonSerializerOptions.Web;
-            options.CosmosClientTelemetryOptions = new() { DisableDistributedTracing = false };
-        }
     }
 }

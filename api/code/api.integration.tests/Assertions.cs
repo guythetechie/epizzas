@@ -4,6 +4,7 @@ using FluentAssertions.Execution;
 using FluentAssertions.Primitives;
 using LanguageExt;
 using System.Diagnostics.CodeAnalysis;
+using System.Net;
 using System.Net.Http;
 
 namespace api.integration.tests;
@@ -26,6 +27,40 @@ internal sealed class HttpResponseMessageAssertions(HttpResponseMessage subject,
                 return new AndConstraint<HttpResponseMessageAssertions>(this);
             default:
                 assertionChain.FailWith("Expected {context:HTTP response message} to be successful, but its status code was {0}.",
+                                        Subject.StatusCode);
+                return new AndConstraint<HttpResponseMessageAssertions>(this);
+        }
+    }
+
+    public AndConstraint<HttpResponseMessageAssertions> BeUnsuccessful([StringSyntax("CompositeFormat")] string because = "",
+                                                                       params object[] becauseArgs)
+    {
+        assertionChain.BecauseOf(because, becauseArgs);
+
+        switch (Subject)
+        {
+            case { IsSuccessStatusCode: false }:
+                return new AndConstraint<HttpResponseMessageAssertions>(this);
+            default:
+                assertionChain.FailWith("Expected {context:HTTP response message} to be unsuccessful, but its status code was {0}.",
+                                        Subject.StatusCode);
+                return new AndConstraint<HttpResponseMessageAssertions>(this);
+        }
+    }
+
+    public AndConstraint<HttpResponseMessageAssertions> HaveStatusCode(HttpStatusCode expectedStatusCode,
+                                                                       [StringSyntax("CompositeFormat")] string because = "",
+                                                                       params object[] becauseArgs)
+    {
+        assertionChain.BecauseOf(because, becauseArgs);
+
+        switch (Subject)
+        {
+            case { StatusCode: var statusCode } when statusCode == expectedStatusCode:
+                return new AndConstraint<HttpResponseMessageAssertions>(this);
+            default:
+                assertionChain.FailWith("Expected {context:HTTP response message} to have status code {0}, but its status code was {1}.",
+                                        expectedStatusCode,
                                         Subject.StatusCode);
                 return new AndConstraint<HttpResponseMessageAssertions>(this);
         }

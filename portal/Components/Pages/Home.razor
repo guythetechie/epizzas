@@ -1,12 +1,26 @@
 ﻿@page "/"
 
+@rendermode InteractiveServer
+
 <PageTitle>Home</PageTitle>
 
 <FluentCard>
     <FluentStack Orientation="Orientation.Vertical">
-        <portal.Components.Orders.ActionBar />
+        <portal.Components.Orders.ActionBar OnOrderCreated="@RefreshListComponent" />
         <FluentCard>
-            <portal.Components.Orders.List />
+            <portal.Components.Orders.List @ref="@listComponent" />
         </FluentCard>
     </FluentStack>
 </FluentCard>
+
+@code {
+    private portal.Components.Orders.List? listComponent;
+
+    private async Task RefreshListComponent()
+    {
+        if (listComponent is not null)
+        {
+            await listComponent.Refresh();
+        }
+    }
+}

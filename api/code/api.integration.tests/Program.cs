@@ -1,5 +1,6 @@
 ﻿using common;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
@@ -20,8 +21,15 @@ internal static class Program
 
     private static void ConfigureBuilder(IHostApplicationBuilder builder)
     {
+        ConfigureLogger(builder);
         ConfigureTelemetry(builder);
         OrdersModule.ConfigureRunOrderTests(builder);
+    }
+
+    private static void ConfigureLogger(IHostApplicationBuilder builder)
+    {
+        builder.Services.TryAddSingleton(provider => provider.GetRequiredService<ILoggerFactory>()
+                                                             .CreateLogger("api.integration.tests"));
     }
 
     private static void ConfigureTelemetry(IHostApplicationBuilder builder)
@@ -47,8 +55,10 @@ internal static class Program
             var runTests = host.Services.GetRequiredService<RunOrderTests>();
             await runTests(cancellationToken);
         }
-        catch
+        catch (Exception exception)
         {
+            var logger = host.Services.GetService<ILogger>();
+            logger?.LogCritical(exception, "Integration tests failed.");
             Environment.ExitCode = -1;
             throw;
         }

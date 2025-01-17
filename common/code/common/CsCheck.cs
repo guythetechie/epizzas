@@ -8,8 +8,8 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
-using System.Text.Json.Nodes;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace common;
 
@@ -54,6 +54,14 @@ public static class Generator
     public static Gen<FileInfo> FileInfo { get; } =
         from system in BogusSystem
         select new FileInfo(system.FilePath());
+
+    public static Gen<string> EmptyOrWhitespaceString { get; } =
+        from whitespaceChars in Gen.OneOfConst([' ', '\t', '\n', '\r']).List[0, 10]
+        select whitespaceChars switch
+        {
+            [] => string.Empty,
+            _ => string.Concat(whitespaceChars)
+        };
 
     public static Gen<PizzaToppingKind> PizzaToppingKind { get; } =
         Gen.OneOfConst<PizzaToppingKind>(common.PizzaToppingKind.Cheese.Instance,
@@ -116,6 +124,11 @@ public static class Generator
             Status = status,
             Pizzas = pizzas
         };
+
+    public static Gen<ETag> ETag { get; } =
+        from guid in Gen.Guid
+        select common.ETag.From(guid.ToString())
+                          .ThrowIfFail();
 
     public static Gen<JsonValue> JsonValue { get; } =
         Gen.OneOf(from value in Gen.Int

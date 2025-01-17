@@ -54,7 +54,7 @@ public partial class CreateDialog(CreateOrder createOrder) : ComponentBase, IDia
                 .Match(async pizza =>
                        {
                            await createOrder(pizza, CancellationToken.None);
-                           await Dialog.CloseAsync();
+                           await Dialog.CloseAsync(Unit.Default);
                        },
                        error => Task.CompletedTask);
     }

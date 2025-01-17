@@ -6,18 +6,31 @@
     <FluentTextField @bind-Value=@orderId
                      Placeholder="Search for order ID"
                      style="width: 25%;" />
-    <FluentButton Appearance="Appearance.Accent" OnClick="@OnCreateOrderButtonClicked">Create order</FluentButton>
+    <FluentButton Appearance="Appearance.Accent"
+                  OnClick="@OnCreateOrderButtonClicked">
+        Create order
+    </FluentButton>
 </FluentStack>
 
 @code {
     private string orderId = string.Empty;
 
+    [Parameter]
+    public EventCallback OnOrderCreated { get; set; }
+
     private async Task OnCreateOrderButtonClicked()
     {
-        await DialogService.ShowDialogAsync<CreateDialog>(Unit.Default, new DialogParameters
+        var reference = await DialogService.ShowDialogAsync<CreateDialog>(Unit.Default, new DialogParameters
             {
                 PreventDismissOnOverlayClick = true,
                 TrapFocus = true
             });
+
+        var result = await reference.Result;
+
+        if (result?.Data is Unit)
+        {
+            await OnOrderCreated.InvokeAsync();
+        }
     }
 }

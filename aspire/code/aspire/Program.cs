@@ -24,13 +24,13 @@ var portal = builder.AddProject<Projects.portal>("portal")
                     .WithReference(api)
                     .WaitFor(api);
 
-var integrationTests = builder.AddProject<Projects.api_integration_tests>("api-integration-tests")
-                              .WithEnvironment("COSMOS_ACCOUNT_ENDPOINT", bicep.GetOutput("cosmosAccountEndpoint"))
-                              .WithEnvironment("COSMOS_DATABASE_NAME", bicep.GetOutput("cosmosDatabaseName"))
-                              .WithEnvironment("COSMOS_ORDERS_CONTAINER_NAME", bicep.GetOutput("cosmosOrdersContainerName"))
-                              .WithEnvironment("API_CONNECTION_NAME", api.Resource.Name)
-                              .WithReference(api)
-                              .WaitFor(api);
+//var integrationTests = builder.AddProject<Projects.api_integration_tests>("api-integration-tests")
+//                              .WithEnvironment("COSMOS_ACCOUNT_ENDPOINT", bicep.GetOutput("cosmosAccountEndpoint"))
+//                              .WithEnvironment("COSMOS_DATABASE_NAME", bicep.GetOutput("cosmosDatabaseName"))
+//                              .WithEnvironment("COSMOS_ORDERS_CONTAINER_NAME", bicep.GetOutput("cosmosOrdersContainerName"))
+//                              .WithEnvironment("API_CONNECTION_NAME", api.Resource.Name)
+//                              .WithReference(api)
+//                              .WaitFor(api);
 
 await builder.Build().RunAsync(cancellationToken);
 

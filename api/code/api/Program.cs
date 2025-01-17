@@ -35,7 +35,7 @@ internal static class Program
         OpenTelemetryModule.ConfigureDestination(telemetryBuilder, builder.Configuration);
         OpenTelemetryModule.SetAlwaysOnSampler(telemetryBuilder);
         OpenTelemetryModule.ConfigureAspNetCoreInstrumentation(telemetryBuilder);
-        CosmosModule.ConfigureTelemetry(telemetryBuilder);
+        common.CosmosModule.ConfigureTelemetry(telemetryBuilder);
     }
 
     private static void ConfigureConfiguration(IHostApplicationBuilder builder) =>

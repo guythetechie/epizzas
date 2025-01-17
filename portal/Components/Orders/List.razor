@@ -3,22 +3,16 @@
 @using common
 @attribute [StreamRendering]
 
+@rendermode InteractiveServer
+
 <div style="height: 600px; overflow:auto;" tabindex="-1">
-    <FluentDataGrid Loading="@gridIsLoading"
-                    ItemsProvider="@itemsProvider"
+    <FluentDataGrid ItemsProvider="@itemsProvider"
                     Virtualize
                     ItemSize="40"
-                    GenerateHeader="GenerateHeaderOption.Sticky">
-        <ChildContent>
-            <PropertyColumn Title="ID" Property="@(item => item.Id)" />
-            <PropertyColumn Title="Status" Property="@(item => item.Id)" />
-            <PropertyColumn Title="Last modified by" Property="@(item => item.LastModifiedBy)" />
-            <TemplateColumn Title="Name">
-                <FluentTextField Value="@context.Id" />
-            </TemplateColumn>
-        </ChildContent>
-        <EmptyContent>
-            No orders found
-        </EmptyContent>
+                    GenerateHeader="GenerateHeaderOption.Sticky"
+                    @ref="@gridComponent">
+        <PropertyColumn Title="ID" Property="@(item => item.Id)" />
+        <PropertyColumn Title="Status" Property="@(item => item.Status)" />
+        <PropertyColumn Title="Last modified by" Property="@(item => item.LastModifiedBy)" />
     </FluentDataGrid>
 </div>

@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "aspire", "aspire\code\aspir
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "portal", "portal\portal.csproj", "{8D7551F2-9FDF-34FC-60C8-7FF0E4F59EAD}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "api.unit.tests", "api\src\api.unit.tests\api.unit.tests.csproj", "{65A9D212-C02F-425A-B0A8-998B6431672E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,8 +41,15 @@ Global
 		{8D7551F2-9FDF-34FC-60C8-7FF0E4F59EAD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8D7551F2-9FDF-34FC-60C8-7FF0E4F59EAD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8D7551F2-9FDF-34FC-60C8-7FF0E4F59EAD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{65A9D212-C02F-425A-B0A8-998B6431672E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{65A9D212-C02F-425A-B0A8-998B6431672E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{65A9D212-C02F-425A-B0A8-998B6431672E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{65A9D212-C02F-425A-B0A8-998B6431672E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C6893817-1F34-44E1-8970-82B42F6BC95D}
 	EndGlobalSection
 EndGlobal
